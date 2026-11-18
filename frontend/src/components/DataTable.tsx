@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import { ReactNode, useDeferredValue, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { copyToClipboard, downloadCsv, downloadPdf, downloadXlsx, printSheet, Sheet } from "./exporters";
 
@@ -16,6 +16,29 @@ export interface Column<T> {
   /** Sort key when value() is not right for ordering, e.g. a number shown as "1.225.000". */
   sortValue?: (row: T) => number | string | null;
   className?: string;
+  /** Header content for a non-sortable column (e.g. a select-all checkbox); header stays the text for exports. */
+  headerNode?: ReactNode;
+}
+
+/** What a server-side table asks the server for. */
+export interface RemoteQuery {
+  page: number;
+  pageSize: number;
+  search: string;
+  sort: { key: string; dir: "asc" | "desc" } | null;
+}
+
+/** Server-side mode: rows is the current page; paging, search and sort happen on the server. */
+export interface RemoteOptions<T> {
+  /** Rows matching the search. */
+  total: number;
+  /** Rows without a search (for "filtered from N"). */
+  unfilteredTotal: number;
+  loading?: boolean;
+  /** Called (search debounced) whenever the page, size, search or sort changes. */
+  onQuery: (q: RemoteQuery) => void;
+  /** Rows to export: everything matching the search (the server may cap it). Defaults to the current page. */
+  fetchAll?: (q: RemoteQuery) => Promise<T[]>;
 }
 
 interface Props<T> {
@@ -25,13 +48,23 @@ interface Props<T> {
   /** Used as the export file name and print title. */
   title: string;
   initialSort?: { key: string; dir: "asc" | "desc" };
+  /** Choices for "records"; ALL_ROWS (0) shows every row on one page. */
   pageSizes?: number[];
   defaultPageSize?: number;
   /** Extra controls shown next to "records", e.g. a filter dropdown. */
   toolbarStart?: ReactNode;
+  /** Server-side paging/search/sort for tables too large to load at once. */
+  remote?: RemoteOptions<T>;
+  /** Show the Copy/Excel/CSV/PDF/Print/Column visibility buttons (default true). */
+  exports?: boolean;
 }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+const num = new Intl.NumberFormat("en-US");
+
+/** Page size meaning "show all rows". */
+export const ALL_ROWS = 0;
 
 /** Table with paging, search, sorting, column visibility and Copy/Excel/CSV/PDF/Print exports. */
 export default function DataTable<T>({
@@ -40,11 +73,16 @@ export default function DataTable<T>({
   rowKey,
   title,
   initialSort,
-  pageSizes = [10, 20, 50, 100],
+  pageSizes = [5, 10, 20, 50, 100, ALL_ROWS],
   defaultPageSize = 20,
   toolbarStart,
+  remote,
+  exports = true,
 }: Props<T>) {
   const [query, setQuery] = useState("");
+  // The table filters on a deferred copy, so typing stays responsive even when
+  // "All" renders thousands of rows.
+  const deferredQuery = useDeferredValue(query);
   const [sort, setSort] = useState(initialSort ?? null);
   const [pageSize, setPageSize] = useState(defaultPageSize);
   const [page, setPage] = useState(1);
@@ -54,10 +92,19 @@ export default function DataTable<T>({
   const colMenuRef = useRef<HTMLDivElement>(null);
   const id = useId();
 
+  // Server mode: send the search after the user pauses typing.
+  const [remoteSearch, setRemoteSearch] = useState("");
+  useEffect(() => {
+    if (!remote) return;
+    const t = setTimeout(() => setRemoteSearch(query.trim()), 350);
+    return () => clearTimeout(t);
+  }, [query, !!remote]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const visible = columns.filter((c) => !hidden.has(c.key));
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    if (remote) return rows; // the server already filtered and sorted
+    const q = deferredQuery.trim().toLowerCase();
     const searchCols = columns.filter((c) => !hidden.has(c.key));
     let out = q ? rows.filter((r) => searchCols.some((c) => c.value(r).toLowerCase().includes(q))) : rows;
     const col = sort && columns.find((c) => c.key === sort.key);
@@ -75,14 +122,26 @@ export default function DataTable<T>({
       });
     }
     return out;
-  }, [rows, columns, hidden, query, sort]);
+  }, [rows, columns, hidden, deferredQuery, sort, !!remote]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const matching = remote ? remote.total : filtered.length;
+  const size = pageSize === ALL_ROWS ? Math.max(1, matching) : pageSize;
+  const pageCount = Math.max(1, Math.ceil(matching / size));
   const current = Math.min(page, pageCount);
-  const start = (current - 1) * pageSize;
-  const pageRows = filtered.slice(start, start + pageSize);
+  const start = (current - 1) * size;
+  const pageRows = remote ? rows : filtered.slice(start, start + size);
+  const allRows = remote ? remote.unfilteredTotal : rows.length;
+  const sizes = remote ? pageSizes.filter((n) => n !== ALL_ROWS) : pageSizes;
 
-  useEffect(() => setPage(1), [query, pageSize]);
+  useEffect(() => setPage(1), [query, pageSize, remote ? sort : null]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const remoteQuery: RemoteQuery = { page: current, pageSize: size, search: remoteSearch, sort };
+  // onQuery may change identity on every parent render; call the latest one.
+  const onQueryRef = useRef(remote?.onQuery);
+  onQueryRef.current = remote?.onQuery;
+  useEffect(() => {
+    onQueryRef.current?.(remoteQuery);
+  }, [remote ? current : 0, remote ? size : 0, remoteSearch, remote ? sort?.key : "", remote ? sort?.dir : ""]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!notice) return;
@@ -108,10 +167,11 @@ export default function DataTable<T>({
   const toggleSort = (key: string) =>
     setSort((s) => (s?.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
 
-  /** Exports every filtered row (not just this page) in the current order. */
-  const sheet = (): Sheet => {
+  /** Exports every matching row (not just this page) in the current order. */
+  const sheet = async (): Promise<Sheet> => {
     const cols = visible.filter((c) => c.exportable !== false);
-    return { title, head: cols.map((c) => c.header), body: filtered.map((r) => cols.map((c) => c.value(r))) };
+    const data = remote ? (remote.fetchAll ? await remote.fetchAll(remoteQuery) : rows) : filtered;
+    return { title, head: cols.map((c) => c.header), body: data.map((r) => cols.map((c) => c.value(r))) };
   };
 
   const run = async (label: string, fn: () => unknown) => {
@@ -127,10 +187,15 @@ export default function DataTable<T>({
     <div className="dt">
       <div className="dt-toolbar">
         <label className="dt-length">
-          <select className="select" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
-            {pageSizes.map((n) => (
+          <select
+            className="select"
+            aria-label="Records per page"
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+          >
+            {sizes.map((n) => (
               <option key={n} value={n}>
-                {n}
+                {n === ALL_ROWS ? "All" : n}
               </option>
             ))}
           </select>
@@ -143,24 +208,24 @@ export default function DataTable<T>({
             <span>Search:</span>
             <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
           </label>
-          <div className="dt-buttons" role="group" aria-label="Export">
-            <button type="button" onClick={() => run(`Copied ${filtered.length} rows`, () => copyToClipboard(sheet()))}>
+          {exports && <div className="dt-buttons" role="group" aria-label="Export">
+            <button type="button" onClick={() => run("Copied to the clipboard", async () => copyToClipboard(await sheet()))}>
               Copy
             </button>
-            <button type="button" onClick={() => run("Excel file downloaded", () => downloadXlsx(sheet()))}>
+            <button type="button" onClick={() => run("Excel file downloaded", async () => downloadXlsx(await sheet()))}>
               Excel
             </button>
-            <button type="button" onClick={() => run("CSV file downloaded", () => downloadCsv(sheet()))}>
+            <button type="button" onClick={() => run("CSV file downloaded", async () => downloadCsv(await sheet()))}>
               CSV
             </button>
-            <button type="button" onClick={() => run("PDF file downloaded", () => downloadPdf(sheet()))}>
+            <button type="button" onClick={() => run("PDF file downloaded", async () => downloadPdf(await sheet()))}>
               PDF
             </button>
             <button
               type="button"
               onClick={() =>
-                run("Print dialog opened", () => {
-                  if (!printSheet(sheet())) throw new Error("popup blocked");
+                run("Print dialog opened", async () => {
+                  if (!printSheet(await sheet())) throw new Error("popup blocked");
                 })
               }
             >
@@ -199,7 +264,7 @@ export default function DataTable<T>({
                 </div>
               )}
             </div>
-          </div>
+          </div>}
         </div>
       </div>
       <p className="dt-notice" role="status" aria-live="polite">
@@ -207,7 +272,7 @@ export default function DataTable<T>({
       </p>
 
       <div className="table-wrap">
-        <table className="data-table dt-table">
+        <table className={remote?.loading ? "data-table dt-table dt-loading" : "data-table dt-table"} aria-busy={remote?.loading || undefined}>
           <thead>
             <tr>
               {visible.map((c) => {
@@ -230,7 +295,7 @@ export default function DataTable<T>({
                         )}
                       </button>
                     ) : (
-                      c.header
+                      (c.headerNode ?? c.header)
                     )}
                   </th>
                 );
@@ -241,7 +306,7 @@ export default function DataTable<T>({
             {pageRows.length === 0 ? (
               <tr>
                 <td colSpan={visible.length} className="dt-empty">
-                  {rows.length === 0 ? "No data available" : "No matching records found"}
+                  {remote?.loading ? "Loading…" : allRows === 0 ? "No data available" : "No matching records found"}
                 </td>
               </tr>
             ) : (
@@ -261,10 +326,10 @@ export default function DataTable<T>({
 
       <div className="dt-footer">
         <p className="dt-info">
-          {filtered.length === 0
+          {matching === 0
             ? "Showing 0 to 0 of 0 entries"
-            : `Showing ${start + 1} to ${start + pageRows.length} of ${filtered.length} entries`}
-          {filtered.length !== rows.length && ` (filtered from ${rows.length} total entries)`}
+            : `Showing ${num.format(start + 1)} to ${num.format(start + pageRows.length)} of ${num.format(matching)} entries`}
+          {matching !== allRows && ` (filtered from ${num.format(allRows)} total entries)`}
         </p>
         <nav className="dt-pages" aria-label="Pagination">
           <button type="button" aria-label="Previous page" disabled={current === 1} onClick={() => setPage(current - 1)}>

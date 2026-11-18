@@ -391,6 +391,7 @@ a { color: var(--primary); }
 .dt-sort:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 td.dt-key { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.75rem; }
 .dt-empty { text-align: center; color: var(--muted); padding: 20px; }
+.dt-loading tbody { opacity: 0.55; transition: opacity 0.15s; }
 .dt-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
 .dt-info { margin: 0; color: var(--muted); }
 .dt-pages { display: inline-flex; align-items: center; }
@@ -526,6 +527,140 @@ td.dt-key { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font
 .row-action:disabled { color: var(--muted); opacity: 0.5; cursor: not-allowed; }
 .form-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .form-note { margin: -4px 0 10px; font-size: 0.8rem; }
+.form-grid .wide-note { grid-column: 1 / -1; margin: 0 0 8px; }
+
+/* ---------- Master Data Klinik > Pasien ---------- */
+.modal:has(.form-grid-5) { width: min(1180px, calc(100vw - 32px)); }
+.form-grid-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.form-grid .span-2 { grid-column: span 2; }
+.form-grid .span-5 { grid-column: 1 / -1; }
+.field input.readonly { background: var(--bg); color: var(--muted); }
+.field input[type="date"] { font: inherit; }
+.kel-picker { position: relative; }
+.kel-picker .input-with-btn { position: relative; }
+.kel-icon { position: absolute; right: 10px; width: 16px; height: 16px; color: var(--muted); pointer-events: none; }
+.kel-results {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  left: 0;
+  right: 0;
+  min-width: 260px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+.kel-results li { display: grid; gap: 1px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+.kel-results li span { font-size: 0.75rem; color: var(--muted); }
+.kel-results li.active { background: var(--bg); }
+
+/* ---------- Master Data Klinik > Dokter ---------- */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 14px; overflow-x: auto; }
+.tab {
+  width: auto;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.tab:hover { background: var(--bg); }
+.tab.active { border-color: var(--border); background: var(--card); color: var(--text); font-weight: 600; }
+.tab:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.tab-panel { min-width: 0; }
+.selected-dokter { max-width: 820px; margin-bottom: 4px; }
+.dual-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+.dual-side { min-width: 0; }
+.dual-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.dual-head h2 { margin: 0; font-size: 0.95rem; }
+.btn-add.danger-outline { border-color: var(--error); color: var(--error); }
+.btn-add.danger-outline:hover:not(:disabled) { background: var(--error); color: #fff; }
+.btn-add:disabled { opacity: 0.45; cursor: default; background: transparent; }
+.check-all { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.row-action.danger { color: var(--error); }
+.lock-note { display: inline-flex; color: var(--muted); }
+.lock-note svg { width: 14px; height: 14px; }
+.inline-icon { width: 14px; height: 14px; vertical-align: -2px; }
+.dt-table td.dt-wide { min-width: 260px; max-width: 420px; }
+/* A column that takes the spare width (e.g. Principal > Nama), and a narrow action column. */
+.dt-table .dt-grow { width: 100%; }
+.dt-table td.dt-grow { max-width: none; }
+.dt-table .dt-action { width: 1%; text-align: center; }
+
+/* ---------- Master Data Klinik > Jaminan Kesehatan ---------- */
+.term-list { display: grid; gap: 10px; }
+.term-row { display: grid; grid-template-columns: 200px minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+.term-label { font-size: 0.88rem; font-weight: 600; padding-top: 8px; }
+.term-row textarea, .item-row textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.9rem;
+  background: transparent;
+  color: var(--text);
+  resize: vertical;
+}
+.term-row textarea:focus, .item-row textarea:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+.term-shown { padding-top: 8px; font-size: 0.82rem; }
+.item-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.item-row { display: grid; grid-template-columns: 2em minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.item-no { padding-top: 8px; text-align: right; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.item-tools { display: inline-flex; align-items: center; gap: 2px; padding-top: 4px; font-size: 0.82rem; }
+.row-action:disabled:not(.danger) { opacity: 0.3; }
+
+/* ---------- Front Office Klinik > Pendaftaran Pasien ---------- */
+.head-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.date-range { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 999px; font-size: 0.82rem; color: var(--muted); }
+.date-range svg { width: 15px; height: 15px; }
+.date-range input { border: 0; background: transparent; color: var(--text); font: inherit; font-size: 0.82rem; padding: 2px 0; }
+.date-range input:focus { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
+.filter-menu { position: relative; }
+.filter-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 15;
+  width: 260px;
+  padding: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+.filter-pop .field { margin-bottom: 10px; }
+.filter-pop .form-actions { margin-top: 4px; justify-content: flex-end; }
+.btn-add svg { width: 15px; height: 15px; }
+.visit-status { font-size: 0.78rem; font-weight: 600; }
+.visit-status.s3 { color: var(--info); }
+.visit-status.s4, .visit-status.s5 { color: #b26a00; }
+.visit-status.s2 { color: var(--success); }
+.visit-status.s6 { color: var(--error); text-decoration: line-through; }
+.dt-datetime { font-variant-numeric: tabular-nums; line-height: 1.35; }
+.modal.modal-xl { width: min(1600px, calc(100vw - 32px)); }
+/* Narrower wrapping columns so the patient table fits the dialog without scrolling sideways. */
+.modal-xl .dt-table td.dt-wrap { min-width: 110px; max-width: 220px; }
+.form-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.selected-patient { margin: 0 0 6px; font-size: 0.88rem; }
+.reg-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; margin: 0 0 14px; font-size: 0.88rem; }
+.reg-summary dt { color: var(--muted); font-size: 0.78rem; }
+.reg-summary dd { margin: 0; }
+.cancel-box { margin-top: 6px; }
+.alert { position: relative; }
+.alert .alert-close { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; color: inherit; }
+.alert:has(.alert-close) { padding-right: 36px; }
 
 /* ---------- Management > User ---------- */
 .table-wrap { overflow-x: auto; margin-top: 16px; }
@@ -588,6 +723,12 @@ td.dt-key { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font
   .role-layout { grid-template-columns: minmax(0, 1fr); }
   .role-editor { padding: 16px; }
   .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .form-grid .span-2 { grid-column: auto; }
+  .dual-list { grid-template-columns: minmax(0, 1fr); }
+  .head-tools { justify-content: flex-start; }
+  .reg-summary { grid-template-columns: minmax(0, 1fr); }
+  .term-row, .item-row { grid-template-columns: minmax(0, 1fr); }
+  .term-label, .term-shown, .item-no { padding-top: 0; text-align: left; }
   .dt-search input { width: 120px; }
   .content { padding: 16px; }
 }

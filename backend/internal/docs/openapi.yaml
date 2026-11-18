@@ -25,6 +25,8 @@ tags:
     description: |
       Master data pages. Access follows the page's menu item; stock and prices
       per branch are limited to the branches the caller is mapped to.
+  - name: front-office
+    description: Front Office Klinik pages; limited to the caller's branches.
   - name: system
     description: Operational endpoints
 
@@ -762,6 +764,1663 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/tindakan:
+    get:
+      tags: [master-data]
+      summary: List procedures with prices at your branches
+      description: |
+        Every procedure in reftindakan. `prices` holds reftindakandetail rows only
+        for the branches the caller is mapped to (refbranchauth), which are also
+        returned in `branches`. Requires the Master Data Klinik > Tindakan menu.
+      operationId: listTindakan
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Procedures and the caller's branches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tindakan:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tindakan'
+                  branches:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kode: { type: string, example: MED }
+                        nama: { type: string, example: KLINIK MEDIKA }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [master-data]
+      summary: Create a procedure
+      operationId: createTindakan
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TindakanInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tindakan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/tindakan/options:
+    get:
+      tags: [master-data]
+      summary: Procedure types (refjenistindakan)
+      operationId: tindakanOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lookup list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jenis: { $ref: '#/components/schemas/OptionList' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/tindakan/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [master-data]
+      summary: Update a procedure
+      operationId: updateTindakan
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TindakanInput'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tindakan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/tindakan/{id}/price/{cabang}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: cabang
+        in: path
+        required: true
+        description: Branch code; must be one of the caller's branches
+        schema:
+          type: string
+          example: MED
+    put:
+      tags: [master-data]
+      summary: Set a procedure's prices at one branch
+      description: Creates or updates the reftindakandetail row. 403 when the caller is not mapped to the branch.
+      operationId: setTindakanPrice
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TindakanPriceInput'
+      responses:
+        '200':
+          description: The procedure with its updated prices
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tindakan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/penunjang:
+    get:
+      tags: [master-data]
+      summary: List supporting examinations with prices at your branches
+      description: |
+        Every examination in refpenunjang. `prices` holds refpenunjangdetail rows
+        only for the branches the caller is mapped to (refbranchauth), which are
+        also returned in `branches`. The lab tables have no purchase price.
+        Requires the Master Data Klinik > Penunjang menu.
+      operationId: listPenunjang
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Examinations and the caller's branches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  penunjang:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Penunjang'
+                  branches:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kode: { type: string, example: MED }
+                        nama: { type: string, example: KLINIK MEDIKA }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [master-data]
+      summary: Create a supporting examination
+      operationId: createPenunjang
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PenunjangInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Penunjang'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/penunjang/options:
+    get:
+      tags: [master-data]
+      summary: Examination types (refjenispanjang)
+      operationId: penunjangOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lookup list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jenis: { $ref: '#/components/schemas/OptionList' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/penunjang/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [master-data]
+      summary: Update a supporting examination
+      operationId: updatePenunjang
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PenunjangInput'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Penunjang'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/penunjang/{id}/price/{cabang}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: cabang
+        in: path
+        required: true
+        description: Branch code; must be one of the caller's branches
+        schema:
+          type: string
+          example: MED
+    put:
+      tags: [master-data]
+      summary: Set an examination's prices at one branch
+      description: Creates or updates the refpenunjangdetail row. 403 when the caller is not mapped to the branch.
+      operationId: setPenunjangPrice
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PenunjangPriceInput'
+      responses:
+        '200':
+          description: The examination with its updated prices
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Penunjang'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/pasien:
+    get:
+      tags: [master-data]
+      summary: One page of patients from your branches
+      description: |
+        Server-side paging, search and sort over refmpasien (~430k rows), limited
+        to the branches the caller is mapped to. Requires the Master Data Klinik >
+        Pasien menu.
+      operationId: listPasien
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
+        - { name: q, in: query, description: Matches name, No RM, NIK or address; a number also matches Kode, schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, enum: [id, noRm, nama, tmptLahir, tglLahir, umur, alamat, rt, rw, cabang], default: id } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc] }, description: Default desc when sort is omitted (newest first) }
+        - { name: cabang, in: query, description: One of the caller's branches (403 otherwise), schema: { type: string } }
+      responses:
+        '200':
+          description: Page of patients
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PasienRow'
+                  total: { type: integer, description: Rows matching the search }
+                  unfilteredTotal: { type: integer, description: Rows in the branches without the search }
+                  branches:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kode: { type: string }
+                        nama: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [master-data]
+      summary: Register a patient
+      description: No RM is generated (the branch's newest number + 1, skipping used ones). The branch must be one of the caller's.
+      operationId: createPasien
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasienInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pasien'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/pasien/options:
+    get:
+      tags: [master-data]
+      summary: Lookup lists for the patient form, and your branches
+      operationId: pasienOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lists of {id, name, isActive}
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gender: { $ref: '#/components/schemas/OptionList' }
+                  golDarah: { $ref: '#/components/schemas/OptionList' }
+                  agama: { $ref: '#/components/schemas/OptionList' }
+                  statusKwn: { $ref: '#/components/schemas/OptionList' }
+                  jamkes: { $ref: '#/components/schemas/OptionList' }
+                  branches:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kode: { type: string }
+                        nama: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/pasien/kelurahan:
+    get:
+      tags: [master-data]
+      summary: Search kelurahan with kecamatan, kab/kota and provinsi
+      operationId: searchKelurahan
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: q, in: query, required: true, description: At least 2 characters, schema: { type: string } }
+      responses:
+        '200':
+          description: Up to 30 matches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kelurahan:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        kelurahan: { type: string }
+                        kecamatan: { type: string }
+                        kabupaten: { type: string }
+                        provinsi: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/pasien/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [master-data]
+      summary: A patient of your branches (404 for other branches)
+      operationId: getPasien
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Patient
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pasien'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [master-data]
+      summary: Update a patient
+      description: The patient and the new branch must both be in the caller's branches. No RM does not change.
+      operationId: updatePasien
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasienInput'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pasien'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dokter:
+    get:
+      tags: [master-data]
+      summary: List doctors with their practice branches
+      description: Every doctor in refmdokter with the codes of its practice branches (refmdokterauth), and all branch names.
+      operationId: listDokter
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Doctors and branches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dokter:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Dokter'
+                  branches:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kode: { type: string }
+                        nama: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [master-data]
+      summary: Create a doctor
+      operationId: createDokter
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DokterInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dokter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/dokter/options:
+    get:
+      tags: [master-data]
+      summary: Lookup lists for the doctor form
+      operationId: dokterOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lists of {id, name}
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jenis: { $ref: '#/components/schemas/OptionList' }
+                  gender: { $ref: '#/components/schemas/OptionList' }
+                  agama: { $ref: '#/components/schemas/OptionList' }
+                  golDarah: { $ref: '#/components/schemas/OptionList' }
+                  statusKwn: { $ref: '#/components/schemas/OptionList' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/dokter/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [master-data]
+      summary: Update a doctor
+      operationId: updateDokter
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DokterInput'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dokter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dokter/{id}/tindakan:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [master-data]
+      summary: The doctor's procedures and the ones that can be added (trxtindakan)
+      operationId: dokterTindakan
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Two lists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DokterTindakanLists'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [master-data]
+      summary: Add and remove procedures of a doctor
+      operationId: changeDokterTindakan
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                add: { type: array, items: { type: integer }, description: reftindakan ids }
+                remove: { type: array, items: { type: integer } }
+      responses:
+        '200':
+          description: The lists after the change
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DokterTindakanLists'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dokter/{id}/cabang:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [master-data]
+      summary: The doctor's practice branches (refmdokterauth)
+      description: `editable` lists the branches the caller may add or remove (their own branches).
+      operationId: dokterCabang
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Assigned and available branches
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DokterCabangLists'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [master-data]
+      summary: Add and remove practice branches
+      description: Every branch in the change must be one of the caller's branches (403 otherwise).
+      operationId: changeDokterCabang
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                add: { type: array, items: { type: string }, example: [MED] }
+                remove: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: The lists after the change
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DokterCabangLists'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/jamkes:
+    get:
+      tags: [master-data]
+      summary: List health insurers and insurer types
+      operationId: listJamkes
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Insurers (refjaminankesehatan) and types (refjaminankesehatantype)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jamkes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Jamkes'
+                  types: { $ref: '#/components/schemas/OptionList' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [master-data]
+      summary: Create a health insurer
+      operationId: createJamkes
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JamkesInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Jamkes'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/jamkes/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [master-data]
+      summary: Update a health insurer
+      operationId: updateJamkes
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JamkesInput'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Jamkes'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/jamkes/{id}/pks:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [master-data]
+      summary: The insurer's PKS (agreement) terms
+      description: One entry per term of refjaminankesehatan_pksmaster; `saved` is false for terms the insurer has no text for.
+      operationId: jamkesPks
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Terms
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JamkesTerms'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [master-data]
+      summary: Replace the insurer's PKS terms
+      description: An empty value removes the term.
+      operationId: saveJamkesPks
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                terms:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      detailId: { type: integer, description: refjaminankesehatan_pksmaster id }
+                      value: { type: string, maxLength: 5000 }
+                      shown: { type: boolean, description: flag 1 }
+      responses:
+        '200':
+          description: The terms after saving
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JamkesTerms'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/jamkes/{id}/items:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [master-data]
+      summary: The insurer's numbered item list (refjaminankesehatan_detail_item)
+      operationId: jamkesItems
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Items in order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JamkesItems'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [master-data]
+      summary: Replace the insurer's item list
+      description: Items are numbered 1, 2, 3, ... in the order sent; empty items are dropped.
+      operationId: saveJamkesItems
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  maxItems: 500
+                  items:
+                    type: object
+                    properties:
+                      value: { type: string, maxLength: 5000 }
+                      shown: { type: boolean }
+      responses:
+        '200':
+          description: The list after saving
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JamkesItems'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/distributor:
+    get:
+      tags: [master-data]
+      summary: List drug distributors (refdistributorobat)
+      operationId: listDistributor
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Distributors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  distributor:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Distributor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [master-data]
+      summary: Create a distributor
+      operationId: createDistributor
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DistributorInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Distributor'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/distributor/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [master-data]
+      summary: Update a distributor
+      operationId: updateDistributor
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DistributorInput'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Distributor'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/principal:
+    get:
+      tags: [master-data]
+      summary: List drug principals (refprincipalobat)
+      operationId: listPrincipal
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Principals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  principal:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Principal'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [master-data]
+      summary: Create a principal
+      operationId: createPrincipal
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrincipalInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Principal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/principal/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [master-data]
+      summary: Rename a principal
+      operationId: updatePrincipal
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrincipalInput'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Principal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/icd:
+    get:
+      tags: [master-data]
+      summary: One page of ICD-X codes
+      description: Server-side paging, search and sort over reficd (~18.5k rows).
+      operationId: listIcd
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
+        - { name: q, in: query, description: Matches code, disease name or type, schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, enum: [id, kode, nama, jenis], default: id } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: asc } }
+      responses:
+        '200':
+          description: Page of codes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Icd'
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [master-data]
+      summary: Create an ICD-X code
+      operationId: createIcd
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IcdInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Icd'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: The ICD-X code is already used
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+  /api/icd/options:
+    get:
+      tags: [master-data]
+      summary: ICD-X types (refjenisicd)
+      operationId: icdOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lookup list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jenis: { $ref: '#/components/schemas/OptionList' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/icd/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [master-data]
+      summary: Update an ICD-X code
+      operationId: updateIcd
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IcdInput'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Icd'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The ICD-X code is already used
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+  /api/perujuk-otc:
+    get:
+      tags: [master-data]
+      summary: List OTC referrers (refperujukotc)
+      description: The Penjual / Perujuk OTC list. Requires the Master Data Klinik > Penjual OTC menu.
+      operationId: listPerujukOtc
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Referrers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  perujuk:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PerujukOtc'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [master-data]
+      summary: Create an OTC referrer
+      operationId: createPerujukOtc
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PerujukOtcInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerujukOtc'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/perujuk-otc/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [master-data]
+      summary: Rename an OTC referrer
+      operationId: updatePerujukOtc
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PerujukOtcInput'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerujukOtc'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/organisasi-lokasi:
+    get:
+      tags: [master-data]
+      summary: SATUSEHAT organizations and locations per branch and poli
+      description: |
+        The reforganizationlocation rows of the caller's branches, with branch and
+        poli (refjenisrawat) names. Requires the Master Data Satu Sehat >
+        Organisasi & Lokasi menu.
+      operationId: listOrganisasiLokasi
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Rows and the caller's branches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OrganisasiLokasi'
+                  branches:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kode: { type: string }
+                        nama: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/organisasi-lokasi/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [master-data]
+      summary: Change the names and SATUSEHAT ids of a row
+      description: Only rows of the caller's branches; others return 404.
+      operationId: updateOrganisasiLokasi
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganisasiLokasiInput'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganisasiLokasi'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/pendaftaran:
+    get:
+      tags: [front-office]
+      summary: One page of visit registrations at your branches
+      description: |
+        Server-side paging, search and sort over trxpendaftaran (~344k rows), for
+        a date range in the clinic's time zone (Asia/Jakarta) and limited to the
+        caller's branches. Requires the Front Office Klinik > Pendaftaran Pasien menu.
+      operationId: listPendaftaran
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, description: YYYY-MM-DD; default today, schema: { type: string, format: date } }
+        - { name: to, in: query, description: YYYY-MM-DD; default = from, schema: { type: string, format: date } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
+        - { name: q, in: query, description: Patient name, No RM, address, service, or No Pendaftaran, schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, enum: [id, noAntri, noAntriPoli, tglMasuk, pelayanan, status, noRm, nama, tglLahir, umur, alamat, cabang, pakaiKartu, totalPoint] } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc] } }
+        - { name: cabang, in: query, description: One of the caller's branches (403 otherwise), schema: { type: string } }
+        - { name: pelayanan, in: query, description: refjenisrawat id, schema: { type: integer } }
+        - { name: status, in: query, description: refstatustransaksi id, schema: { type: integer } }
+      responses:
+        '200':
+          description: Page of registrations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Pendaftaran'
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [front-office]
+      summary: Register a visit
+      description: |
+        Assigns the next queue number of the branch and day, and the next poli
+        queue number of the service (written firstcode + 3 digits, e.g. U015, for
+        services that need one). The status starts as DAFTAR. The date may be
+        today or earlier; the time is the clinic's current time.
+      operationId: createPendaftaran
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idPas, idJenis, cabang]
+              properties:
+                tanggal: { type: string, format: date, description: Default today }
+                idPas: { type: integer, description: refmpasien id }
+                idJenis: { type: integer, description: Active refjenisrawat id (Pelayanan) }
+                cabang: { type: string, description: One of the caller's branches }
+                pakaiKartu: { type: boolean }
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pendaftaran'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/pendaftaran/options:
+    get:
+      tags: [front-office]
+      summary: Services, visit statuses, your branches and today's clinic date
+      operationId: pendaftaranOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lookup lists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pelayanan:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        name: { type: string, example: POLI UMUM }
+                        needQueue: { type: boolean }
+                        firstCode: { type: string, example: U }
+                        isExamination: { type: boolean }
+                  status: { $ref: '#/components/schemas/OptionList' }
+                  branches:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kode: { type: string }
+                        nama: { type: string }
+                  today: { type: string, format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/pendaftaran/pasien:
+    get:
+      tags: [front-office]
+      summary: Search the patients of your branches for the registration form
+      operationId: pendaftaranPasien
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 5 } }
+      responses:
+        '200':
+          description: Page of patients (newest first)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        noRm: { type: string }
+                        nama: { type: string }
+                        tglLahir: { type: string, format: date, nullable: true }
+                        alamat: { type: string }
+                        nik: { type: string }
+                        hp: { type: string }
+                        penanggung: { type: string }
+                        jamkes: { type: string }
+                        cabang: { type: string }
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/pendaftaran/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [front-office]
+      summary: Change the service or card use of a DAFTAR registration
+      description: A new service gets the next poli queue number of that day.
+      operationId: updatePendaftaran
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idJenis]
+              properties:
+                idJenis: { type: integer }
+                pakaiKartu: { type: boolean }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pendaftaran'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Only registrations with status DAFTAR can be changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/pendaftaran/{id}/cancel:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      tags: [front-office]
+      summary: Cancel a DAFTAR registration
+      operationId: cancelPendaftaran
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 100 }
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pendaftaran'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Only registrations with status DAFTAR can be changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /healthz:
     get:
       tags: [system]
@@ -1174,6 +2833,352 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/ObatStock'
+
+    TindakanPriceInput:
+      type: object
+      properties:
+        hbeli: { type: number, minimum: 0, nullable: true }
+        hjual: { type: number, minimum: 0, nullable: true }
+        hjualJamkes: { type: number, minimum: 0, nullable: true, description: Price for health-insurance (jamkes) patients }
+        isActive: { type: boolean }
+
+    TindakanPrice:
+      allOf:
+        - type: object
+          properties:
+            cabang: { type: string, example: MED }
+        - $ref: '#/components/schemas/TindakanPriceInput'
+
+    TindakanInput:
+      type: object
+      required: [nama]
+      properties:
+        nama: { type: string, maxLength: 100, example: JASA KONSULTASI DOKTER UMUM }
+        idJenis: { type: integer, nullable: true }
+        hbeli: { type: number, minimum: 0, nullable: true }
+        hjual: { type: number, minimum: 0, nullable: true }
+        hjualJamkes: { type: number, minimum: 0, nullable: true }
+        isActive: { type: boolean }
+        isEdit: { type: boolean, description: isedit flag }
+        cetakKartu: { type: boolean, description: sts_ctk_krtu flag }
+
+    Tindakan:
+      allOf:
+        - $ref: '#/components/schemas/TindakanInput'
+        - type: object
+          properties:
+            id: { type: integer, example: 1 }
+            updatedBy: { type: string }
+            updatedAt: { type: string, format: date-time, nullable: true }
+            prices:
+              type: array
+              items:
+                $ref: '#/components/schemas/TindakanPrice'
+
+    PenunjangPriceInput:
+      type: object
+      properties:
+        hjual: { type: number, minimum: 0, nullable: true }
+        hjualJamkes: { type: number, minimum: 0, nullable: true, description: Price for health-insurance (jamkes) patients }
+        isActive: { type: boolean }
+
+    PenunjangPrice:
+      allOf:
+        - type: object
+          properties:
+            cabang: { type: string, example: MED }
+        - $ref: '#/components/schemas/PenunjangPriceInput'
+
+    PenunjangInput:
+      type: object
+      required: [nama]
+      properties:
+        nama: { type: string, maxLength: 100, example: ASAM URAT }
+        idJenis: { type: integer, nullable: true, description: refjenispanjang id }
+        hjual: { type: number, minimum: 0, nullable: true }
+        hjualJamkes: { type: number, minimum: 0, nullable: true }
+        isActive: { type: boolean }
+
+    Penunjang:
+      allOf:
+        - $ref: '#/components/schemas/PenunjangInput'
+        - type: object
+          properties:
+            id: { type: integer, example: 1 }
+            updatedBy: { type: string }
+            updatedAt: { type: string, format: date-time, nullable: true }
+            prices:
+              type: array
+              items:
+                $ref: '#/components/schemas/PenunjangPrice'
+
+    PasienRow:
+      type: object
+      properties:
+        id: { type: integer, description: Kode }
+        noRm: { type: string, example: 89-01-17 }
+        nama: { type: string }
+        tmptLahir: { type: string }
+        tglLahir: { type: string, format: date, nullable: true }
+        alamat: { type: string }
+        rt: { type: string }
+        rw: { type: string }
+        cabang: { type: string, example: CTM }
+
+    PasienInput:
+      type: object
+      required: [nama, tmptLahir, tglLahir, alamat, idGender, cabang]
+      properties:
+        nama: { type: string, maxLength: 50 }
+        tmptLahir: { type: string, maxLength: 30 }
+        tglLahir: { type: string, format: date }
+        alamat: { type: string, maxLength: 100 }
+        idKel: { type: integer, nullable: true, description: refkelurahan id }
+        rt: { type: string, maxLength: 4 }
+        rw: { type: string, maxLength: 4 }
+        telp: { type: string, maxLength: 20 }
+        hp: { type: string, maxLength: 50 }
+        idGender: { type: integer }
+        idGolDarah: { type: integer, nullable: true }
+        idAgama: { type: integer, nullable: true }
+        idStatusKwn: { type: integer, nullable: true }
+        tglKun: { type: string, format: date, nullable: true, description: First visit; defaults to today on create }
+        penanggung: { type: string, maxLength: 50 }
+        idJamkes: { type: integer, nullable: true }
+        noJamkes: { type: string, maxLength: 100 }
+        cabang: { type: string, maxLength: 10 }
+        nik: { type: string, maxLength: 30 }
+        alergi: { type: string, maxLength: 2000 }
+
+    Pasien:
+      allOf:
+        - $ref: '#/components/schemas/PasienRow'
+        - $ref: '#/components/schemas/PasienInput'
+        - type: object
+          properties:
+            kelurahan: { type: string }
+            kecamatan: { type: string }
+            kabupaten: { type: string }
+            provinsi: { type: string }
+            ihsId: { type: string, description: Satu Sehat patient id }
+            updatedBy: { type: string }
+            updatedAt: { type: string, format: date-time, nullable: true }
+
+    DokterInput:
+      type: object
+      required: [nama]
+      properties:
+        nama: { type: string, maxLength: 30 }
+        idJenis: { type: integer, nullable: true, description: refjenisdokter id }
+        tglMasuk: { type: string, format: date, nullable: true }
+        tmptLahir: { type: string, maxLength: 25 }
+        tglLahir: { type: string, format: date, nullable: true }
+        alamat: { type: string, maxLength: 100 }
+        telp: { type: string, maxLength: 20 }
+        hp: { type: string, maxLength: 20 }
+        pendidikan: { type: string, maxLength: 30 }
+        spesialis: { type: string, maxLength: 30 }
+        idGender: { type: integer, nullable: true }
+        idAgama: { type: integer, nullable: true }
+        idGolDarah: { type: integer, nullable: true }
+        idStatusKwn: { type: integer, nullable: true }
+        nik: { type: string, maxLength: 20 }
+        isActive: { type: boolean, description: status 1 (Active) or 2 (Non Active) }
+
+    Dokter:
+      allOf:
+        - $ref: '#/components/schemas/DokterInput'
+        - type: object
+          properties:
+            id: { type: integer }
+            cabangPraktek: { type: array, items: { type: string }, example: [MED, MGM] }
+            updatedBy: { type: string }
+            updatedAt: { type: string, format: date-time, nullable: true }
+
+    DokterTindakanLists:
+      type: object
+      properties:
+        assigned:
+          type: array
+          items: { $ref: '#/components/schemas/DokterTindakanItem' }
+        available:
+          type: array
+          items: { $ref: '#/components/schemas/DokterTindakanItem' }
+
+    DokterTindakanItem:
+      type: object
+      properties:
+        id: { type: integer }
+        nama: { type: string }
+        jenis: { type: string }
+
+    DokterCabangLists:
+      type: object
+      properties:
+        assigned:
+          type: array
+          items: { type: object, properties: { kode: { type: string }, nama: { type: string } } }
+        available:
+          type: array
+          items: { type: object, properties: { kode: { type: string }, nama: { type: string } } }
+        editable: { type: array, items: { type: string } }
+
+    JamkesInput:
+      type: object
+      required: [nama]
+      properties:
+        nama: { type: string, maxLength: 100 }
+        alamat: { type: string, maxLength: 100 }
+        telp: { type: string, maxLength: 15 }
+        fax: { type: string, maxLength: 15 }
+        idType: { type: integer, nullable: true, description: refjaminankesehatantype id }
+        isActive: { type: boolean, description: isactive 1 (Active) or 2 (Non Active) }
+        hasLimit: { type: boolean, description: status_limit 1 (Limit) or 2 (No Limit) }
+        limit: { type: number, minimum: 0, nullable: true, description: Required (> 0) when hasLimit }
+
+    Jamkes:
+      allOf:
+        - $ref: '#/components/schemas/JamkesInput'
+        - type: object
+          properties:
+            id: { type: integer }
+            updatedBy: { type: string }
+            updatedAt: { type: string, format: date-time, nullable: true }
+
+    JamkesTerms:
+      type: object
+      properties:
+        terms:
+          type: array
+          items:
+            type: object
+            properties:
+              detailId: { type: integer }
+              description: { type: string, example: Masa berlaku PKS }
+              value: { type: string }
+              shown: { type: boolean }
+              saved: { type: boolean }
+
+    JamkesItems:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              no: { type: integer }
+              value: { type: string }
+              shown: { type: boolean }
+
+    DistributorInput:
+      type: object
+      required: [nama]
+      properties:
+        nama: { type: string, maxLength: 300 }
+        alamat: { type: string, maxLength: 200 }
+        telp: { type: string, maxLength: 15 }
+        fax: { type: string, maxLength: 25 }
+        cp: { type: string, maxLength: 40, description: Contact person (Kontak Person) }
+        telpCp: { type: string, maxLength: 25, description: Contact person's phone (Telp KP) }
+
+    Distributor:
+      allOf:
+        - $ref: '#/components/schemas/DistributorInput'
+        - type: object
+          properties:
+            id: { type: integer }
+            updatedBy: { type: string }
+            updatedAt: { type: string, format: date-time, nullable: true }
+
+    PrincipalInput:
+      type: object
+      required: [nama]
+      properties:
+        nama: { type: string, maxLength: 300, example: PT BAYER INDONESIA }
+
+    Principal:
+      allOf:
+        - $ref: '#/components/schemas/PrincipalInput'
+        - type: object
+          properties:
+            id: { type: integer }
+
+    IcdInput:
+      type: object
+      required: [kode, nama, idJenis]
+      properties:
+        kode: { type: string, maxLength: 10, example: K04.3, description: Stored uppercase; unique }
+        nama: { type: string, maxLength: 250, example: ABNORMAL HARD TISSUE FORMATION IN PULP }
+        idJenis: { type: integer, description: refjenisicd id }
+
+    Icd:
+      allOf:
+        - $ref: '#/components/schemas/IcdInput'
+        - type: object
+          properties:
+            id: { type: integer }
+            jenis: { type: string, example: GIGI }
+            updatedBy: { type: string }
+            updatedAt: { type: string, format: date-time, nullable: true }
+
+    PerujukOtcInput:
+      type: object
+      required: [nama]
+      properties:
+        nama: { type: string, maxLength: 50, example: Chintia Astriyani }
+
+    PerujukOtc:
+      allOf:
+        - $ref: '#/components/schemas/PerujukOtcInput'
+        - type: object
+          properties:
+            id: { type: integer }
+
+    OrganisasiLokasiInput:
+      type: object
+      required: [organisasi, lokasi]
+      properties:
+        organisasi: { type: string, maxLength: 50, example: POLI UMUM }
+        lokasi: { type: string, maxLength: 50, example: Ruang POLI UMUM }
+        organisasiId: { type: string, description: SATUSEHAT Organization id (UUID); empty when not registered, example: b85ff1fd-84ce-46dc-a216-863df8f9993f }
+        lokasiId: { type: string, description: SATUSEHAT Location id (UUID); empty when not registered, example: bef83bd2-aa33-4161-a029-519ff55deb17 }
+
+    OrganisasiLokasi:
+      allOf:
+        - $ref: '#/components/schemas/OrganisasiLokasiInput'
+        - type: object
+          properties:
+            id: { type: integer }
+            cabang: { type: string, example: CTM }
+            namaCabang: { type: string, example: KLINIK CITRA MEDIKA }
+            idJenisRawat: { type: integer, nullable: true, example: 2 }
+            poli: { type: string, example: POLI UMUM }
+            updatedBy: { type: string }
+            updatedAt: { type: string, format: date-time, nullable: true, description: Clinic time }
+
+    Pendaftaran:
+      type: object
+      properties:
+        id: { type: integer, description: No Pendaftaran }
+        noAntri: { type: integer, nullable: true }
+        noAntriPoli: { type: string, nullable: true, example: U015 }
+        tglMasuk: { type: string, nullable: true, example: '2026-11-18 20:29:06', description: Clinic time }
+        idJenis: { type: integer, nullable: true }
+        pelayanan: { type: string, example: POLI UMUM }
+        idStatus: { type: integer, nullable: true }
+        status: { type: string, example: DAFTAR }
+        idPas: { type: integer, nullable: true }
+        noRm: { type: string, description: Empty when the patient no longer exists }
+        nama: { type: string }
+        tglLahir: { type: string, format: date, nullable: true }
+        alamat: { type: string }
+        cabang: { type: string }
+        pakaiKartu: { type: boolean }
+        totalPoint: { type: number, nullable: true, description: The patient's point balance (refpasienpoint) }
+        cancelBy: { type: string }
+        cancelAt: { type: string, nullable: true }
+        cancelReason: { type: string }
 
     Error:
       type: object

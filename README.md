@@ -216,6 +216,224 @@ LAB_PASSWORD=... scripts/import-lab-obat.sh --replace  # wipe the app's drug tab
 
 `LAB_HOST` (default `host.docker.internal`, the Docker host), `LAB_PORT`, `LAB_DB` and `LAB_USER` can be overridden. Stock rows for drugs deleted from lab (about 4,200) are skipped. The import takes about 10 seconds for 2,485 drugs and 24,570 stock rows. Re-run it after `docker compose down -v`, which deletes the database.
 
+## Master Data Klinik › Tindakan (procedures and prices per branch)
+
+`/master-data-klinik/tindakan` works like the Obat page.
+
+| Table               | Content |
+|---------------------|---------|
+| `reftindakan`       | Procedure: name, jenis, default prices (`hbeli`, `hjual`, `hjual_jamkes`), `isactive`, `isedit`, `sts_ctk_krtu` |
+| `reftindakandetail` | One row per procedure and branch: `hbeli`, `hjual`, `hjual_jamkes` (price for health-insurance patients) and `isactive` |
+| `refjenistindakan`  | Procedure types |
+
+The tables have the same layout as in `lab` (migration `022_tindakan.sql`). The app adds:
+
+- a unique `(id_tindakan, cabang)`, so there is one price row per procedure and branch;
+- foreign keys to `reftindakan` and `refbranch`.
+
+There is no foreign key on `id_jenis`, because one procedure in lab points to a type that no longer exists.
+
+Prices follow the same branch authorization as Obat:
+
+- `GET /api/tindakan` returns `prices` only for the caller's branches.
+- `PUT /api/tindakan/{id}/price/{cabang}` returns `403` for any other branch.
+- The pencil edits the procedure itself; the **$** button edits the prices at one of the user's branches.
+
+Import the data from lab with:
+
+```bash
+LAB_PASSWORD=... scripts/import-lab-tindakan.sh            # only when the app has no procedures yet
+LAB_PASSWORD=... scripts/import-lab-tindakan.sh --replace  # wipe and copy again
+```
+
+The three duplicate price rows in lab (same procedure and branch, same values) are imported once. Shared import helpers live in `scripts/lib/lab.sh`.
+
+## Master Data Klinik › Penunjang (supporting examinations and prices per branch)
+
+`/master-data-klinik/penunjang` works like Tindakan, for lab, radiology and other supporting examinations.
+
+| Table                | Content |
+|----------------------|---------|
+| `refpenunjang`       | Examination: name, type, default `hjual` and `hjual_jamkes`, `isactive` |
+| `refpenunjangdetail` | One row per examination and branch: `hjual`, `hjual_jamkes`, `isactive` |
+| `refjenispanjang`    | Examination types (LABORATORIUM, RADIOLOGI, LAB MOHC, …). The table is named like this in `lab`, and the name is kept |
+
+- **No purchase price:** these tables in `lab` have no `hbeli` column, so there is none here either.
+- **Same layout as `lab`** (migration `023_penunjang.sql`), plus a unique `(id_penunjang, cabang)` and foreign keys to the type, examination and branch. The lab data satisfies all of them.
+- **Branch authorization** is the same as Obat and Tindakan (`PUT /api/penunjang/{id}/price/{cabang}` returns `403` outside the caller's branches).
+
+```bash
+LAB_PASSWORD=... scripts/import-lab-penunjang.sh            # only when the app has no examinations yet
+LAB_PASSWORD=... scripts/import-lab-penunjang.sh --replace  # wipe and copy again
+```
+
+## Master Data Klinik › Pasien (patients, paged on the server)
+
+`/master-data-klinik/pasien` lists the ~430,000 patients of `refmpasien`. The table runs in server-side mode (`DataTable`'s `remote` option): paging, search (name, No RM, NIK, address, or Kode) and sorting happen in PostgreSQL, so each page loads in well under a second. Exports fetch at most the first 5,000 matching rows.
+
+| Table | Content |
+|-------|---------|
+| `refmpasien` | Patients |
+| `refgender`, `refgoldarah`, `refagama`, `refstatuskawin` | Gender, blood type, religion, marital status |
+| `refjaminankesehatan` | Health insurers |
+| `refkelurahan` › `refkecamatan` › `refkabupaten` › `refprovinsi` | Region hierarchy. Patients point to `refkelurahan`; the form fills kecamatan, kab/kota and provinsi when a kelurahan is picked |
+
+The tables have the same columns as in `lab`. The app adds the following:
+
+- **Migration `024_pasien.sql`**: search and sort indexes, including trigram (`pg_trgm`) indexes.
+- **Migration `025_pasien_keys.sql`**:
+  - primary keys on the lookups that lack one in `lab` (gender, agama, status kawin, kelurahan);
+  - foreign keys for every reference, which the lab data satisfies.
+
+**Branch authorization.**
+
+- Users see, open and edit only patients whose `cabang` is one of their branches (`refbranchauth`). A patient of another branch answers `404`.
+- New patients and moved patients must go to one of the user's branches.
+- The 19 lab patients without a branch are not listed for anyone.
+
+**No RM** is generated on create and never changes:
+
+- It is the branch's newest number + 1 in the `NN-NN-NN` format (e.g. `89-01-17` → `89-01-18`), skipping numbers already used in that branch.
+- Generation is serialized per branch with an advisory lock.
+- No RM is not unique in `lab`; numbers repeat across branches, and 96 even repeat within a branch. So it has no unique constraint.
+
+**Print card** opens a printable card with the name, a Code 128 barcode of the No RM ([barcode.ts](frontend/src/components/barcode.ts)) and the No RM.
+
+**Data notes (lab):**
+
+- 175 birth dates are impossible (years 1000 to 9999). They show no age, sort last, and must be corrected before the patient can be saved.
+- Empty branch codes were imported as `NULL`.
+
+### Importing patients from lab
+
+```bash
+LAB_PASSWORD=... scripts/import-lab-pasien.sh            # only when the app has no patients yet
+LAB_PASSWORD=... scripts/import-lab-pasien.sh --replace  # wipe and copy again (about 40 seconds)
+```
+
+This copies real personal and medical data (names, NIK, addresses, allergies). Keep it only on machines allowed to hold it, never commit a dump, and consider anonymizing it for shared development databases.
+
+## Master Data Klinik › Dokter (doctors, their procedures and practice branches)
+
+`/master-data-klinik/dokter` has three tabs:
+
+- **Data Dokter**: the 689 doctors of `refmdokter`, with type, gender, status (`status` 1 = Active, 2 = Non Active) and practice branches. **+ Add** and the pencil open the form.
+- **Tindakan Dokter**: the procedures a doctor may perform (`trxtindakan` → `reftindakan`). The left list holds the doctor's procedures; remove them with the trash icon, or tick several and press **Delete**. The right list holds the other procedures; tick them and press **Move**.
+- **Cabang Praktek**: the branches where the doctor practises (`refmdokterauth`), with the same two lists. Users can only add or remove **their own branches** (`refbranchauth`); other branches show a lock, and the API answers `403` for them.
+
+Open the second and third tab for a doctor with the row buttons in Data Dokter.
+
+| Table | Content |
+|-------|---------|
+| `refmdokter` | Doctors. Legacy fields `id_internal`, `cabang`, `oldid` and `ihs_*` are kept but not edited |
+| `refjenisdokter` | Doctor types (DOKTER UMUM, DOKTER GIGI, …) |
+| `refmdokterauth` | Doctor ↔ practice branch |
+| `trxtindakan` | Doctor ↔ procedure |
+
+The tables have the same layout as in `lab`. Migration `026_dokter.sql` creates them; `027_dokter_keys.sql` adds:
+
+- foreign keys to the lookups (shared with the patient tables) and to `reftindakan` and `refbranch`;
+- unique `(dokterid, cabang)` and `(id_dokter, id_tindakan)`.
+
+Lab has 1,512 duplicate doctor/procedure pairs; the import loads each pair once.
+
+```bash
+LAB_PASSWORD=... scripts/import-lab-dokter.sh            # needs the Pasien and Tindakan imports first
+LAB_PASSWORD=... scripts/import-lab-dokter.sh --replace
+```
+
+## Master Data Klinik › Jaminan Kesehatan (health insurers)
+
+`/master-data-klinik/jaminan-kesehatan` lists the insurers of `refjaminankesehatan`. The columns are type, status (`isactive` 1 = Active, 2 = Non Active) and limit (`status_limit` 1 = Limit with the `limit` amount, 2 = No Limit). Each row has three actions:
+
+- **Pencil**: edit the insurer.
+- **Ketentuan PKS**: the agreement terms of `refjaminankesehatan_detail`, one text per term of `refjaminankesehatan_pksmaster`: Masa berlaku PKS, Tarif, Biaya Adm, Biaya Konsul, Batas Tagihan Kadaluarsa and Batas Pembayaran kadaluarsa. Leave a term empty to remove it.
+- **Detail item (i)**: the insurer's numbered list in `refjaminankesehatan_detail_item` (in lab, exclusions such as "Penyakit akibat alkohol dan narkoba"). Items can be added, reordered and removed; they are renumbered 1, 2, 3, … on save.
+
+Migration `028_jamkes.sql`:
+
+- creates the type table (`refjaminankesehatantype`: PT, CV, Non PT CV, Payor Admedika, Non Payor Admedika, PT & CV), the PKS term list and the two detail tables, with the same columns as `lab`;
+- seeds the 6 types and 6 terms;
+- adds a primary key on the term list, foreign keys, and a unique `(jamkesid, detailid)` for the terms.
+
+The insurers come with the patient import. The details have their own import:
+
+```bash
+LAB_PASSWORD=... scripts/import-lab-jamkes.sh            # PKS terms and item lists
+LAB_PASSWORD=... scripts/import-lab-jamkes.sh --replace
+```
+
+Re-running `import-lab-pasien.sh --replace` empties the insurer details (they reference the insurers), so run `import-lab-jamkes.sh` again afterwards.
+
+## Master Data Klinik › Distributor
+
+`/master-data-klinik/distributor` lists the drug distributors of `refdistributorobat`, with these columns: Kode, Nama, Alamat, Telp, Fax, Kontak Person (`cp`) and Telp KP (`telp_cp`). **+ Add** and the pencil open the form. Field limits follow the `varchar` sizes (Nama 300, Alamat 200, Telp 15, Fax 25, Kontak Person 40, Telp KP 25).
+
+The table and its data come with the Obat migration and import (`021_obat.sql`, `scripts/import-lab-obat.sh`), so this page needs no migration or import of its own. There is no delete, because every drug refers to its distributor.
+
+## Master Data Klinik › Principal
+
+`/master-data-klinik/principal` lists the drug principals of `refprincipalobat` (Kode, Nama). **+ Add** and the pencil open a one-field form (Nama, at most 300 characters).
+
+The table and its data come with the Obat migration and import (`021_obat.sql`, `scripts/import-lab-obat.sh`), so this page needs no migration or import of its own. There is no delete, because drugs refer to their principal.
+
+## Master Data Klinik › ICD
+
+`/master-data-klinik/icd` lists the 18,505 ICD-X diagnosis codes of `reficd` (Kode, Kode ICD-X, Nama Penyakit, Jenis ICD-X).
+
+- **Server-side mode.** Like Pasien, paging, search (code, disease name or type) and sorting run in the database, and exports fetch at most 5,000 matching rows.
+- **Form.** **+ Add** and the pencil open the form; Kode ICD-X is stored uppercase and must be unique (`409` otherwise).
+
+Migration `029_icd.sql` creates `refjenisicd` (GIGI, THT, SARAF, …) and `reficd` with the lab layout. It adds a unique `kode_icd`, a foreign key to the type, and trigram indexes for search; the lab data satisfies all of them.
+
+```bash
+LAB_PASSWORD=... scripts/import-lab-icd.sh            # only when the app has no ICD codes yet
+LAB_PASSWORD=... scripts/import-lab-icd.sh --replace
+```
+
+## Master Data Klinik › Penjual OTC (Perujuk OTC)
+
+`/master-data-klinik/penjual-otc` lists the people who refer over-the-counter sales (`refperujukotc`: ID, Nama), titled "Perujuk OTC" like the original screen. **+ Add** and the pencil open a one-field form (Nama, at most 50 characters). There is no delete, because sales transactions (`trxjual.id_perujuk_otc` in lab) refer to these rows. Names are not unique in lab (one appears twice), so there is no unique constraint.
+
+```bash
+LAB_PASSWORD=... scripts/import-lab-perujuk-otc.sh            # migration 030_perujuk_otc.sql creates the table
+LAB_PASSWORD=... scripts/import-lab-perujuk-otc.sh --replace
+```
+
+## Front Office Klinik › Pendaftaran Pasien (patient registrations)
+
+`/front-office-klinik/pendaftaran-pasien` lists registrations (`trxpendaftaran`, 344k rows in lab) with server-side paging, search and sorting, like Pasien. The columns are No Pendaftaran, No Antrian, No Antrian Poli, Tanggal Waktu, Pelayanan, Status Kunjungan, No RM, Nama, Tanggal Lahir, Umur, Alamat, Cabang, Pakai Kartu, Total Point and Action.
+
+- **Filters.** A date range (both ends default to today), a branch selector, and a **Filter** popover with Pelayanan and Status. Exports fetch at most 5,000 matching rows.
+- **Pelayanan** comes from `refjenisrawat` (POLI UMUM, POLI GIGI, LABORATORIUM, OBAT BEBAS, …). `refjenispanjang` holds the supporting examination types used by Penunjang, not the registration services.
+- **Status Kunjungan** comes from `refstatustransaksi`: NON KUN, CLOSE, DAFTAR, PROSES, PAYMENT, CANCEL. A new registration starts as DAFTAR. It can be edited (Pelayanan, Pakai Kartu) or cancelled only while it is still DAFTAR. Cancelling records who cancelled it, when, and the reason, which shows as a tooltip on the status.
+- **Total Point** is the patient's point balance in `refpasienpoint`.
+- **+ Add** opens a dialog with Tanggal (today or earlier), Pelayanan, Cabang and Pakai Kartu, above a patient search table where you tick one patient. Cabang is filled from the patient's branch and can be changed.
+- **Queue numbers** follow lab:
+  - No Antrian counts per branch per day.
+  - No Antrian Poli counts per branch, day and service. It gets a printed form only for services with `neednoantrian = 1`: the service's `firstcode` plus three digits, for example `U009` or `G001`.
+  - Numbering is serialized per branch and day with a PostgreSQL advisory lock. Changing the service of a registration gives it a new poli number.
+- **Time zone.** Dates and times are the clinic's (`Asia/Jakarta`), whatever the server's zone is. The time zone database is embedded in the binary, because the Alpine image has none.
+- **Branch authorization.** Users only see, add and edit registrations of their own branches (`refbranchauth`). Asking for another branch answers `403`, and another branch's registration answers `404`.
+
+Migration `031_pendaftaran.sql` creates `refjenisrawat`, `refstatustransaksi`, `trxpendaftaran` and `refpasienpoint` with the lab layout. `032_pendaftaran_keys.sql` adds foreign keys to the service, the status and the branch. There is no foreign key to the patient, because 38,174 lab registrations refer to patients that no longer exist; the list shows "(pasien tidak ditemukan)" for them. The import maps 194 empty branch codes to NULL, and copies point balances only for patients that exist in the app. The lab data ends on 2026-11-08, so "today" is empty until new registrations are made.
+
+```bash
+LAB_PASSWORD=... scripts/import-lab-pendaftaran.sh            # needs the Pasien import first
+LAB_PASSWORD=... scripts/import-lab-pendaftaran.sh --replace
+```
+
+The data is personal (who visited which clinic and when): keep it on machines allowed to hold it, and never commit it.
+
+### Master Data Satu Sehat › Organisasi & Lokasi
+
+`/master-data-satu-sehat/organisasi-lokasi` lists, per branch and poli, the SATUSEHAT Organization and Location the clinic uses (`reforganizationlocation`): Kode, Cabang, Poli (`refjenisrawat`), Organisasi, Lokasi, Organisasi ID and Lokasi ID. Like the original screen there is no add or delete: rows are fixed per branch and poli, and the pencil edits the names and the two SATUSEHAT IDs (empty, or a UUID). Users only see and edit the rows of their own branches (`refbranchauth`). `jenisrawatid` has no foreign key, because `import-lab-pendaftaran.sh` truncates `refjenisrawat` with CASCADE.
+
+```bash
+LAB_PASSWORD=... scripts/import-lab-organisasi-lokasi.sh            # migration 033_organization_location.sql creates the table
+LAB_PASSWORD=... scripts/import-lab-organisasi-lokasi.sh --replace
+```
+
 ## How the 15-minute inactivity logout works
 
 The token lifetime (`JWT_TTL`) is also the inactivity window, and the rule is enforced on both the server and the client:
@@ -264,6 +482,17 @@ backend/
   internal/role               roles CRUD and user role assignment (/api/roles, /api/users)
   internal/branch             clinic branches in refbranch (/api/branches)
   internal/obat               drug master and stock per branch (/api/obat)
+  internal/tindakan           procedures and prices per branch (/api/tindakan)
+  internal/penunjang          supporting examinations and prices per branch (/api/penunjang)
+  internal/pasien             patients with server-side paging, No RM generation (/api/pasien)
+  internal/dokter             doctors, their procedures and practice branches (/api/dokter)
+  internal/jamkes             health insurers, PKS terms and item lists (/api/jamkes)
+  internal/distributor        drug distributors (/api/distributor)
+  internal/principal          drug principals (/api/principal)
+  internal/icd                ICD-X codes with server-side paging (/api/icd)
+  internal/perujukotc         OTC referrers, "Penjual OTC" (/api/perujuk-otc)
+  internal/pendaftaran        patient registrations, queue numbers, cancel (/api/pendaftaran)
+  internal/branchauth         which branches a user is mapped to (refbranchauth)
   internal/httpx              shared JSON response helpers
   internal/docs               OpenAPI spec and Swagger UI (SWAGGER_ENABLED)
 frontend/
@@ -271,8 +500,22 @@ frontend/
   src/auth/AuthContext.tsx    session, inactivity timer, token refresh
   src/layout/                 app shell: sidebar from /api/menus, top bar, icons
   src/components/             DataTable (paging, search, sort, column visibility) and its exporters
-  src/pages/                  Register, Login, Dashboard, RolePage, UserPage, BranchPage, ObatPage, MenuPage (placeholder)
+  src/components/branchView   per-branch columns, branch filter (Obat, Tindakan, Penunjang)
+  src/components/FormKit      modal form, fields and amount inputs for master-data dialogs
+  src/components/barcode.ts   Code 128 barcode (SVG) for patient cards
+  src/components/dates.ts     today, DD/MM/YYYY formatting and age
+  src/pages/                  Register, Login, Dashboard, RolePage, UserPage, BranchPage, ObatPage, TindakanPage, PenunjangPage, PasienPage, DokterPage, JamkesPage, DistributorPage, PrincipalPage, IcdPage, PerujukOtcPage, PendaftaranPage, MenuPage (placeholder)
 scripts/import-lab-obat.sh    copies drugs and stock from the legacy lab database
+scripts/import-lab-tindakan.sh copies procedures and prices per branch from lab
+scripts/import-lab-penunjang.sh copies supporting examinations and prices per branch from lab
+scripts/import-lab-pasien.sh  copies patients and their lookups from lab (personal data)
+scripts/import-lab-dokter.sh  copies doctors, their procedures and practice branches from lab
+scripts/import-lab-jamkes.sh  copies the insurers' PKS terms and item lists from lab
+scripts/import-lab-icd.sh     copies ICD-X codes and their types from lab
+scripts/import-lab-perujuk-otc.sh copies the OTC referrers from lab
+scripts/import-lab-pendaftaran.sh copies registrations, services, statuses and point balances from lab (personal data)
+scripts/import-lab-organisasi-lokasi.sh copies the SATUSEHAT organizations & locations from lab
+scripts/lib/lab.sh            shared helpers for the import scripts
   nginx.conf                  serves the SPA and proxies /api to the backend
 docker-compose.yml
 .env.example

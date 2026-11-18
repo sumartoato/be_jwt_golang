@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/example/be_jwt_golang/backend/internal/auth"
+	"github.com/example/be_jwt_golang/backend/internal/branchauth"
 	"github.com/example/be_jwt_golang/backend/internal/httpx"
 )
 
@@ -40,11 +41,7 @@ func (h *Handler) branches(r *http.Request) ([]Branch, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	codes := make([]string, len(list))
-	for i, b := range list {
-		codes[i] = b.Kode
-	}
-	return list, codes, nil
+	return list, branchauth.Codes(list), nil
 }
 
 // user is what goes into create_user/update_user (varchar(20)).
@@ -121,16 +118,12 @@ func (h *Handler) SetStock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cabang := strings.ToUpper(strings.TrimSpace(r.PathValue("cabang")))
-	_, codes, err := h.branches(r)
+	branches, _, err := h.branches(r)
 	if err != nil {
 		httpx.InternalError(w, err)
 		return
 	}
-	allowed := false
-	for _, c := range codes {
-		allowed = allowed || c == cabang
-	}
-	if !allowed {
+	if !branchauth.Has(branches, cabang) {
 		httpx.WriteError(w, http.StatusForbidden, "you are not assigned to branch "+cabang)
 		return
 	}

@@ -1,14 +1,19 @@
-import { FormEvent, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from "react";
-import { DollarSign, Pencil, Plus, X } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { DollarSign, Pencil, Plus } from "lucide-react";
 import { api, ApiError, FieldErrors, LookupOption, Obat, ObatInput, ObatOptions, ObatStock } from "../api";
 import { useAuth } from "../auth/AuthContext";
 import DataTable, { Column } from "../components/DataTable";
-
-type BranchRef = { kode: string; nama: string };
-const ALL = "__all__";
-const num = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
-const fmt = (v: number | null | undefined) => (v === null || v === undefined ? "-" : num.format(v));
-const orDash = (s: string | undefined) => (s ? s : "-");
+import {
+  ALL_BRANCHES,
+  BranchFilter,
+  BranchRef,
+  fmt,
+  initialBranch,
+  NoBranchNotice,
+  orDash,
+  perBranchColumn,
+} from "../components/branchView";
+import { FieldShell, Modal, numText, textNum, useModal } from "../components/FormKit";
 
 const EMPTY_OBAT: ObatInput = {
   nama: "",
@@ -44,7 +49,7 @@ export default function ObatPage() {
   const [obat, setObat] = useState<Obat[] | null>(null);
   const [branches, setBranches] = useState<BranchRef[]>([]);
   const [options, setOptions] = useState<ObatOptions | null>(null);
-  const [branch, setBranch] = useState(ALL);
+  const [branch, setBranch] = useState(ALL_BRANCHES);
   const [loadError, setLoadError] = useState("");
   const [editing, setEditing] = useState<Obat | "new" | null>(null);
   const [stockOf, setStockOf] = useState<Obat | null>(null);
@@ -59,8 +64,7 @@ export default function ObatPage() {
         setObat(list.obat);
         setBranches(list.branches);
         setOptions(opts);
-        // One branch: show it directly. Several: show all, like the original screen.
-        setBranch(list.branches.length === 1 ? list.branches[0].kode : ALL);
+        setBranch(initialBranch(list.branches));
       })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) expired();
@@ -88,43 +92,14 @@ export default function ObatPage() {
   const replace = (o: Obat, isNew: boolean) =>
     setObat((list) => (isNew ? [...(list ?? []), o] : (list ?? []).map((x) => (x.id === o.id ? o : x))));
 
-  /** Stock rows to show: the selected branch, or every branch of the user. */
-  const shownStocks = (o: Obat): ObatStock[] =>
-    branch === ALL ? o.stocks : o.stocks.filter((s) => s.cabang === branch);
-
-  // A per-branch column: one value for a single branch, one line per branch for "all".
+  // A stock column: one value for the selected branch, one line per branch for "all".
   const perBranch = (
     key: string,
     header: string,
     pick: (s: ObatStock) => string,
     sortPick?: (s: ObatStock) => number | null,
     hidden = false,
-  ): Column<Obat> => ({
-    key,
-    header,
-    hidden,
-    value: (o) => {
-      const rows = shownStocks(o);
-      if (branch !== ALL) return rows[0] ? pick(rows[0]) : "-";
-      return rows.map((s) => `${s.cabang}:${pick(s)}`).join("; ");
-    },
-    render: (o) => {
-      const rows = shownStocks(o);
-      if (branch !== ALL) return rows[0] ? pick(rows[0]) : <span className="muted">-</span>;
-      if (rows.length === 0) return <span className="muted">-</span>;
-      return (
-        <ul className="branch-vals">
-          {rows.map((s) => (
-            <li key={s.cabang}>
-              <span className="branch-vals-kode">{s.cabang}</span> {pick(s)}
-            </li>
-          ))}
-        </ul>
-      );
-    },
-    // Sorting only makes sense for one branch; with all branches it sorts by the first.
-    sortValue: sortPick ? (o) => (shownStocks(o)[0] ? sortPick(shownStocks(o)[0]) : null) : undefined,
-  });
+  ) => perBranchColumn<Obat, ObatStock>({ key, header, rowsOf: (o) => o.stocks, branch, pick, sortPick, hidden });
 
   const columns: Column<Obat>[] = [
     { key: "id", header: "Kode", value: (o) => String(o.id), sortValue: (o) => o.id },
@@ -186,25 +161,6 @@ export default function ObatPage() {
     },
   ];
 
-  const branchFilter =
-    branches.length > 1 ? (
-      <label className="dt-length">
-        <span>Cabang</span>
-        <select className="select dt-branch" aria-label="Cabang" value={branch} onChange={(e) => setBranch(e.target.value)}>
-          <option value={ALL}>Semua cabang ({branches.length})</option>
-          {branches.map((b) => (
-            <option key={b.kode} value={b.kode}>
-              {b.kode} · {b.nama}
-            </option>
-          ))}
-        </select>
-      </label>
-    ) : branches.length === 1 ? (
-      <span className="dt-length">
-        Cabang <span className="chip">{branches[0].kode}</span>
-      </span>
-    ) : null;
-
   return (
     <section className="panel">
       <div className="page-head">
@@ -218,12 +174,7 @@ export default function ObatPage() {
           {saved}
         </p>
       )}
-      {obat && branches.length === 0 && (
-        <p className="alert info" role="status">
-          You are not assigned to any branch, so stock and prices per branch are hidden. An admin can assign branches
-          under Management › User.
-        </p>
-      )}
+      {obat && branches.length === 0 && <NoBranchNotice what="stock and prices" />}
       {loadError ? (
         <p className="alert error" role="alert">
           {loadError}
@@ -238,7 +189,7 @@ export default function ObatPage() {
           rowKey={(o) => o.id}
           initialSort={{ key: "id", dir: "asc" }}
           defaultPageSize={10}
-          toolbarStart={branchFilter}
+          toolbarStart={<BranchFilter branches={branches} value={branch} onChange={setBranch} />}
         />
       )}
       {editing && options && (
@@ -258,7 +209,7 @@ export default function ObatPage() {
         <StockForm
           obat={stockOf}
           branches={branches}
-          initialBranch={branch === ALL ? branches[0]?.kode : branch}
+          initialBranch={branch === ALL_BRANCHES ? branches[0]?.kode : branch}
           onClose={() => setStockOf(null)}
           onUnauthorized={expired}
           onSaved={(o, cabang) => {
@@ -269,85 +220,6 @@ export default function ObatPage() {
         />
       )}
     </section>
-  );
-}
-
-// ---------- shared dialog bits ----------
-
-function useModal() {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const d = ref.current;
-    d?.showModal();
-    return () => d?.close();
-  }, []);
-  return ref;
-}
-
-function Modal({
-  dialogRef,
-  title,
-  wide,
-  onClose,
-  onSubmit,
-  error,
-  busy,
-  children,
-}: {
-  dialogRef: RefObject<HTMLDialogElement>;
-  title: string;
-  wide?: boolean;
-  onClose: () => void;
-  onSubmit: (e: FormEvent) => void;
-  error: string;
-  busy: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <dialog ref={dialogRef} className={wide ? "modal modal-wide" : "modal"} aria-labelledby="obat-dialog-title" onClose={onClose}>
-      <form onSubmit={onSubmit} noValidate>
-        <header className="modal-head">
-          <h2 id="obat-dialog-title">{title}</h2>
-          <button type="button" className="row-action" aria-label="Close" onClick={onClose}>
-            <X aria-hidden="true" />
-          </button>
-        </header>
-        <div className="modal-body">{children}</div>
-        {error && (
-          <p className="alert error modal-alert" role="alert">
-            {error}
-          </p>
-        )}
-        <footer className="modal-foot">
-          <button type="button" className="btn-small" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="btn-small btn-primary" disabled={busy}>
-            {busy ? "Saving…" : "Save"}
-          </button>
-        </footer>
-      </form>
-    </dialog>
-  );
-}
-
-const numText = (v: number | null) => (v === null ? "" : String(v));
-const textNum = (s: string) => (s.trim() === "" ? null : Number(s));
-
-function FieldShell({ id, label, error, wide, required, children }: { id: string; label: string; error?: string; wide?: boolean; required?: boolean; children: ReactNode }) {
-  return (
-    <div className={wide ? "field wide" : "field"}>
-      <label htmlFor={id}>
-        {label}
-        {required && <span aria-hidden="true"> *</span>}
-      </label>
-      {children}
-      {error && (
-        <span id={`${id}-error`} className="field-error">
-          {error}
-        </span>
-      )}
-    </div>
   );
 }
 

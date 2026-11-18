@@ -31,7 +31,7 @@ type fakeRepo struct {
 
 func newFake() *fakeRepo {
 	return &fakeRepo{
-		userBranches: map[string][]Branch{nurseID: {{"MED", "KLINIK MEDIKA"}, {"PRM", "KLINIK PRATAMA PRIMA MEDIKA"}}},
+		userBranches: map[string][]Branch{nurseID: {{Kode: "MED", Nama: "KLINIK MEDIKA"}, {Kode: "PRM", Nama: "KLINIK PRATAMA PRIMA MEDIKA"}}},
 		obat:         map[int]Obat{1: {ID: 1, Nama: "PARACETAMOL"}},
 		stock: map[int]map[string]Stock{1: {
 			"MED": {Cabang: "MED", Stok: f(10), IsActive: true},

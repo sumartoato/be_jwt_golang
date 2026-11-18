@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/example/be_jwt_golang/backend/internal/branchauth"
 	"github.com/example/be_jwt_golang/backend/internal/httpx"
 )
 
@@ -154,10 +155,7 @@ type Options struct {
 }
 
 // Branch is a branch the caller is mapped to.
-type Branch struct {
-	Kode string `json:"kode"`
-	Nama string `json:"nama"`
-}
+type Branch = branchauth.Branch
 
 type Repository interface {
 	Options(ctx context.Context) (Options, error)
@@ -214,19 +212,7 @@ func (p *PostgresRepository) Options(ctx context.Context) (Options, error) {
 }
 
 func (p *PostgresRepository) UserBranches(ctx context.Context, userID string) ([]Branch, error) {
-	rows, err := p.pool.Query(ctx,
-		`SELECT b.kode, COALESCE(b.nama, '')
-		 FROM refbranchauth a JOIN refbranch b ON b.kode = a.branch
-		 WHERE a.userid = $1
-		 ORDER BY b.kode`, userID)
-	if err != nil {
-		return nil, err
-	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Branch, error) {
-		var b Branch
-		err := r.Scan(&b.Kode, &b.Nama)
-		return b, err
-	})
+	return branchauth.ForUser(ctx, p.pool, userID)
 }
 
 const obatColumns = `id, nama, COALESCE(isi, ''), COALESCE(isi_per_box, ''), id_jenis, id_logo, id_prod,

@@ -16,10 +16,21 @@ import (
 	"github.com/example/be_jwt_golang/backend/internal/branch"
 	"github.com/example/be_jwt_golang/backend/internal/config"
 	"github.com/example/be_jwt_golang/backend/internal/db"
+	"github.com/example/be_jwt_golang/backend/internal/distributor"
 	"github.com/example/be_jwt_golang/backend/internal/docs"
+	"github.com/example/be_jwt_golang/backend/internal/dokter"
+	"github.com/example/be_jwt_golang/backend/internal/icd"
+	"github.com/example/be_jwt_golang/backend/internal/jamkes"
 	"github.com/example/be_jwt_golang/backend/internal/menu"
 	"github.com/example/be_jwt_golang/backend/internal/obat"
+	"github.com/example/be_jwt_golang/backend/internal/orglokasi"
+	"github.com/example/be_jwt_golang/backend/internal/pasien"
+	"github.com/example/be_jwt_golang/backend/internal/pendaftaran"
+	"github.com/example/be_jwt_golang/backend/internal/penunjang"
+	"github.com/example/be_jwt_golang/backend/internal/perujukotc"
+	"github.com/example/be_jwt_golang/backend/internal/principal"
 	"github.com/example/be_jwt_golang/backend/internal/role"
+	"github.com/example/be_jwt_golang/backend/internal/tindakan"
 	"github.com/example/be_jwt_golang/backend/internal/user"
 )
 
@@ -60,6 +71,17 @@ func main() {
 	role.NewHandler(role.NewPostgresRepository(pool), menuRepo).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
 	branch.NewHandler(branch.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
 	obat.NewHandler(obat.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	tindakan.NewHandler(tindakan.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	penunjang.NewHandler(penunjang.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	pasien.NewHandler(pasien.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	dokter.NewHandler(dokter.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	jamkes.NewHandler(jamkes.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	distributor.NewHandler(distributor.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	principal.NewHandler(principal.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	icd.NewHandler(icd.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	perujukotc.NewHandler(perujukotc.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	pendaftaran.NewHandler(pendaftaran.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	orglokasi.NewHandler(orglokasi.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
 	if cfg.SwaggerEnabled {
 		docs.Register(mux)
 		log.Printf("swagger UI enabled at /swagger/")
