@@ -18,6 +18,7 @@ import (
 	"github.com/example/be_jwt_golang/backend/internal/db"
 	"github.com/example/be_jwt_golang/backend/internal/docs"
 	"github.com/example/be_jwt_golang/backend/internal/menu"
+	"github.com/example/be_jwt_golang/backend/internal/obat"
 	"github.com/example/be_jwt_golang/backend/internal/role"
 	"github.com/example/be_jwt_golang/backend/internal/user"
 )
@@ -58,6 +59,7 @@ func main() {
 	menuHandler.Routes(mux, tokens.Middleware)
 	role.NewHandler(role.NewPostgresRepository(pool), menuRepo).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
 	branch.NewHandler(branch.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	obat.NewHandler(obat.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
 	if cfg.SwaggerEnabled {
 		docs.Register(mux)
 		log.Printf("swagger UI enabled at /swagger/")

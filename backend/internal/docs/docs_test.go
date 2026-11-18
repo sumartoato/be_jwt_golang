@@ -34,7 +34,7 @@ func TestRegisterServesUIAndSpec(t *testing.T) {
 	// Every route registered in main.go (auth, menu, role, branch) must be documented.
 	for _, p := range []string{
 		"/api/auth/register:", "/api/auth/login:", "/api/auth/refresh:", "/api/me:", "/api/menus:",
-		"/api/roles:", "/api/roles/{id}:", "/api/users:", "/api/users/{id}/role:", "/api/users/{id}/branches:", "/api/users/{id}/menus:", "/api/branches:", "/api/branches/{kode}:", "/healthz:",
+		"/api/roles:", "/api/roles/{id}:", "/api/users:", "/api/users/{id}/role:", "/api/users/{id}/branches:", "/api/users/{id}/menus:", "/api/branches:", "/api/branches/{kode}:", "/api/obat:", "/api/obat/options:", "/api/obat/{id}:", "/api/obat/{id}/stock/{cabang}:", "/healthz:",
 	} {
 		if !strings.Contains(rec.Body.String(), p) {
 			t.Errorf("spec is missing path %s", strings.TrimSuffix(p, ":"))

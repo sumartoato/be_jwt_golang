@@ -515,6 +515,18 @@ td.dt-key { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font
 .tree-title { flex: 1; min-width: 0; }
 .tree-count { font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 
+/* ---------- Master Data Klinik > Obat ---------- */
+.dt-table td.dt-wrap { white-space: normal; min-width: 180px; max-width: 260px; }
+.dt-clip { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.branch-vals { list-style: none; margin: 0; padding: 0; font-variant-numeric: tabular-nums; }
+.branch-vals li { line-height: 1.45; }
+.branch-vals-kode { display: inline-block; min-width: 2.6em; color: var(--muted); font-size: 0.72rem; font-weight: 600; }
+.row-actions { display: inline-flex; gap: 2px; }
+.dt-branch { max-width: 240px; text-overflow: ellipsis; }
+.row-action:disabled { color: var(--muted); opacity: 0.5; cursor: not-allowed; }
+.form-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.form-note { margin: -4px 0 10px; font-size: 0.8rem; }
+
 /* ---------- Management > User ---------- */
 .table-wrap { overflow-x: auto; margin-top: 16px; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }

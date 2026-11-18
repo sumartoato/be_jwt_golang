@@ -21,6 +21,10 @@ tags:
       Role management. Access follows the menu: a caller whose role can open
       Management > Role (`/management/role`) can use the role endpoints, and
       Management > User (`/management/user`) the user endpoints. Others get 403.
+  - name: master-data
+    description: |
+      Master data pages. Access follows the page's menu item; stock and prices
+      per branch are limited to the branches the caller is mapped to.
   - name: system
     description: Operational endpoints
 
@@ -587,6 +591,177 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationError'
 
+  /api/obat:
+    get:
+      tags: [master-data]
+      summary: List drugs with stock at your branches
+      description: |
+        Every drug in refobat. `stocks` holds trxstock rows only for the branches
+        the caller is mapped to (refbranchauth), which are also returned in
+        `branches`. Requires the Master Data Klinik > Obat menu.
+      operationId: listObat
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Drugs and the caller's branches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  obat:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Obat'
+                  branches:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kode:
+                          type: string
+                          example: MED
+                        nama:
+                          type: string
+                          example: KLINIK MEDIKA
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [master-data]
+      summary: Create a drug
+      operationId: createObat
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObatInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Obat'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/obat/options:
+    get:
+      tags: [master-data]
+      summary: Lookup lists for the drug form
+      operationId: obatOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: One list of {id, name} per lookup table
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jenis: { $ref: '#/components/schemas/OptionList' }
+                  satuan: { $ref: '#/components/schemas/OptionList' }
+                  logo: { $ref: '#/components/schemas/OptionList' }
+                  produsen: { $ref: '#/components/schemas/OptionList' }
+                  moving: { $ref: '#/components/schemas/OptionList' }
+                  movingPo: { $ref: '#/components/schemas/OptionList' }
+                  distributor: { $ref: '#/components/schemas/OptionList' }
+                  principal: { $ref: '#/components/schemas/OptionList' }
+                  golongan: { $ref: '#/components/schemas/OptionList' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/obat/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [master-data]
+      summary: Update a drug
+      operationId: updateObat
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObatInput'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Obat'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/obat/{id}/stock/{cabang}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: cabang
+        in: path
+        required: true
+        description: Branch code; must be one of the caller's branches
+        schema:
+          type: string
+          example: MED
+    put:
+      tags: [master-data]
+      summary: Set a drug's stock and prices at one branch
+      description: Creates or updates the trxstock row. 403 when the caller is not mapped to the branch.
+      operationId: setObatStock
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObatStockInput'
+      responses:
+        '200':
+          description: The drug with its updated stock
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Obat'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /healthz:
     get:
       tags: [system]
@@ -928,6 +1103,77 @@ components:
         isInternal:
           type: boolean
           default: false
+
+    OptionList:
+      type: array
+      items:
+        type: object
+        properties:
+          id:
+            type: integer
+          name:
+            type: string
+
+    ObatStock:
+      type: object
+      description: A trxstock row
+      properties:
+        cabang: { type: string, example: MED }
+        stok: { type: number, nullable: true, example: 505 }
+        stokMin: { type: number, nullable: true }
+        hbeli: { type: number, nullable: true }
+        hp: { type: number, nullable: true }
+        hjual: { type: number, nullable: true, example: 175000 }
+        isActive: { type: boolean }
+
+    ObatStockInput:
+      type: object
+      properties:
+        stok: { type: number, minimum: 0, nullable: true }
+        stokMin: { type: number, minimum: 0, nullable: true }
+        hbeli: { type: number, minimum: 0, nullable: true }
+        hp: { type: number, minimum: 0, nullable: true }
+        hjual: { type: number, minimum: 0, nullable: true }
+        isActive: { type: boolean }
+
+    ObatInput:
+      type: object
+      required: [nama]
+      description: Editable refobat columns. Lookup ids must exist (see /api/obat/options).
+      properties:
+        nama: { type: string, maxLength: 100, example: PARACETAMOL 500 MG }
+        isi: { type: string, maxLength: 10 }
+        isiPerBox: { type: string, maxLength: 20 }
+        idJenis: { type: integer, nullable: true }
+        idLogo: { type: integer, nullable: true }
+        idProd: { type: integer, nullable: true }
+        satBeli: { type: integer, nullable: true }
+        satJual: { type: integer, nullable: true }
+        idMoving: { type: integer, nullable: true }
+        idMovingPo: { type: integer, nullable: true }
+        idDistributor: { type: integer, nullable: true }
+        idPrincipal: { type: integer, nullable: true }
+        idGolongan: { type: integer, nullable: true }
+        qjb: { type: number, minimum: 0, nullable: true }
+        hbeli: { type: number, minimum: 0, nullable: true }
+        hjual: { type: number, minimum: 0, nullable: true }
+        hp: { type: number, minimum: 0, nullable: true }
+        nonAktif: { type: boolean }
+        kenaPajak: { type: boolean }
+        komposisi: { type: string, maxLength: 5000 }
+
+    Obat:
+      allOf:
+        - $ref: '#/components/schemas/ObatInput'
+        - type: object
+          properties:
+            id: { type: integer, example: 1 }
+            updatedBy: { type: string }
+            updatedAt: { type: string, format: date-time, nullable: true }
+            stocks:
+              type: array
+              items:
+                $ref: '#/components/schemas/ObatStock'
 
     Error:
       type: object

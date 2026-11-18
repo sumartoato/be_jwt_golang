@@ -178,6 +178,44 @@ The table is the reusable [DataTable](frontend/src/components/DataTable.tsx) com
 
 Exports contain every row that matches the search, in the current sort order, with the visible columns only. The PDF library (`jspdf`) loads only when PDF is clicked.
 
+## Master Data Klinik › Obat (drugs and stock per branch)
+
+`/master-data-klinik/obat` lists the drug master and each drug's stock and prices **per branch**.
+
+| Table          | Content |
+|----------------|---------|
+| `refobat`      | Drug master: name, jenis, units, default prices, distributor, principal, komposisi, … |
+| `trxstock`     | One row per drug and branch (`id_obat`, `cabang`): `stok`, `stok_min`, `hbeli`, `hp`, `hjual`, `isactive` |
+| lookups        | `refjenisobat`, `refsatuan`, `reflogoobat`, `refprodusen`, `refkodemovingobat`, `refkodemovingpo`, `refdistributorobat`, `refprincipalobat`, `refgolonganobat` |
+
+These tables have the same columns, types and primary keys as in the `lab` database (migration `021_obat.sql`). The app adds foreign keys where the lab data is consistent. `refobat.id_prod` has none because most values point to producers that no longer exist.
+
+**Branch authorization.** Users see and edit stock only for the branches they are mapped to under Management › User (`refbranchauth`):
+
+- `GET /api/obat` returns every drug, but `stocks` only for the caller's branches.
+- `PUT /api/obat/{id}/stock/{cabang}` returns `403` for any other branch.
+- Several branches: the page shows them all, one line per branch, and the **Cabang** dropdown narrows to one. One branch: plain values. No branch: stock columns are empty and the **$** button is disabled.
+- The mapping is read on every request, so changes apply immediately.
+
+Who can open the page at all is decided by the role (the Obat menu item).
+
+**Editing.**
+
+- The pencil edits the drug master; `create_user`/`update_user` get the user's email cut to 20 characters (the column size).
+- The **$** button edits stock and prices for one of the user's branches. Saving creates the `trxstock` row if the drug has none at that branch yet.
+- Upload (import from a file) is not built yet.
+
+### Importing drugs from lab
+
+The drug data is not in the migrations. Copy it from the lab database (with the stack running):
+
+```bash
+LAB_PASSWORD=... scripts/import-lab-obat.sh            # only when the app has no drugs yet
+LAB_PASSWORD=... scripts/import-lab-obat.sh --replace  # wipe the app's drug tables and copy again
+```
+
+`LAB_HOST` (default `host.docker.internal`, the Docker host), `LAB_PORT`, `LAB_DB` and `LAB_USER` can be overridden. Stock rows for drugs deleted from lab (about 4,200) are skipped. The import takes about 10 seconds for 2,485 drugs and 24,570 stock rows. Re-run it after `docker compose down -v`, which deletes the database.
+
 ## How the 15-minute inactivity logout works
 
 The token lifetime (`JWT_TTL`) is also the inactivity window, and the rule is enforced on both the server and the client:
@@ -225,6 +263,7 @@ backend/
   internal/menu               menus repository, tree building, role filtering, GET /api/menus, RequireMenu
   internal/role               roles CRUD and user role assignment (/api/roles, /api/users)
   internal/branch             clinic branches in refbranch (/api/branches)
+  internal/obat               drug master and stock per branch (/api/obat)
   internal/httpx              shared JSON response helpers
   internal/docs               OpenAPI spec and Swagger UI (SWAGGER_ENABLED)
 frontend/
@@ -232,7 +271,8 @@ frontend/
   src/auth/AuthContext.tsx    session, inactivity timer, token refresh
   src/layout/                 app shell: sidebar from /api/menus, top bar, icons
   src/components/             DataTable (paging, search, sort, column visibility) and its exporters
-  src/pages/                  Register, Login, Dashboard, RolePage, UserPage, BranchPage, MenuPage (placeholder)
+  src/pages/                  Register, Login, Dashboard, RolePage, UserPage, BranchPage, ObatPage, MenuPage (placeholder)
+scripts/import-lab-obat.sh    copies drugs and stock from the legacy lab database
   nginx.conf                  serves the SPA and proxies /api to the backend
 docker-compose.yml
 .env.example

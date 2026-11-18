@@ -13,6 +13,8 @@ export interface Column<T> {
   exportable?: boolean; // default true; false for e.g. an action column
   /** Start hidden; the user can show it under "Column visibility". */
   hidden?: boolean;
+  /** Sort key when value() is not right for ordering, e.g. a number shown as "1.225.000". */
+  sortValue?: (row: T) => number | string | null;
   className?: string;
 }
 
@@ -25,6 +27,8 @@ interface Props<T> {
   initialSort?: { key: string; dir: "asc" | "desc" };
   pageSizes?: number[];
   defaultPageSize?: number;
+  /** Extra controls shown next to "records", e.g. a filter dropdown. */
+  toolbarStart?: ReactNode;
 }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
@@ -38,6 +42,7 @@ export default function DataTable<T>({
   initialSort,
   pageSizes = [10, 20, 50, 100],
   defaultPageSize = 20,
+  toolbarStart,
 }: Props<T>) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState(initialSort ?? null);
@@ -58,7 +63,16 @@ export default function DataTable<T>({
     const col = sort && columns.find((c) => c.key === sort.key);
     if (col && sort) {
       const dir = sort.dir === "asc" ? 1 : -1;
-      out = [...out].sort((a, b) => dir * collator.compare(col.value(a), col.value(b)));
+      const key = col.sortValue ?? col.value;
+      out = [...out].sort((a, b) => {
+        const x = key(a);
+        const y = key(b);
+        // Empty values go last in both directions.
+        if (x === null || x === "") return y === null || y === "" ? 0 : 1;
+        if (y === null || y === "") return -1;
+        if (typeof x === "number" && typeof y === "number") return dir * (x - y);
+        return dir * collator.compare(String(x), String(y));
+      });
     }
     return out;
   }, [rows, columns, hidden, query, sort]);
@@ -122,6 +136,7 @@ export default function DataTable<T>({
           </select>
           <span>records</span>
         </label>
+        {toolbarStart}
 
         <div className="dt-tools">
           <label className="dt-search">

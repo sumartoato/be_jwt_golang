@@ -88,6 +88,66 @@ export type BranchInput = Omit<Branch, "id" | "secretKeySet" | "secretKeyHint"> 
   secretKey: string;
 };
 
+/** A trxstock row: one drug's stock and prices at one branch. */
+export interface ObatStock {
+  cabang: string;
+  stok: number | null;
+  stokMin: number | null;
+  hbeli: number | null;
+  hp: number | null;
+  hjual: number | null;
+  isActive: boolean;
+}
+
+/** A refobat row. Lookup columns are ids; names come from api.obatOptions. */
+export interface Obat {
+  id: number;
+  nama: string;
+  isi: string;
+  isiPerBox: string;
+  idJenis: number | null;
+  idLogo: number | null;
+  idProd: number | null;
+  satBeli: number | null;
+  satJual: number | null;
+  idMoving: number | null;
+  idMovingPo: number | null;
+  idDistributor: number | null;
+  idPrincipal: number | null;
+  idGolongan: number | null;
+  qjb: number | null;
+  hbeli: number | null;
+  hjual: number | null;
+  hp: number | null;
+  nonAktif: boolean;
+  kenaPajak: boolean;
+  komposisi: string;
+  updatedBy: string;
+  updatedAt: string | null;
+  /** Only for the branches the user is mapped to. */
+  stocks: ObatStock[];
+}
+
+export type ObatInput = Omit<Obat, "id" | "updatedBy" | "updatedAt" | "stocks">;
+export type ObatStockInput = Omit<ObatStock, "cabang">;
+
+export interface LookupOption {
+  id: number;
+  name: string;
+}
+
+export interface ObatOptions {
+  jenis: LookupOption[];
+  satuan: LookupOption[];
+  logo: LookupOption[];
+  produsen: LookupOption[];
+  moving: LookupOption[];
+  movingPo: LookupOption[];
+  distributor: LookupOption[];
+  principal: LookupOption[];
+  golongan: LookupOption[];
+}
+
 async function request<T>(path: string, options: { method?: string; body?: unknown; token?: string | null } = {}): Promise<T> {
   const headers: Record<string, string> = {};
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
@@ -135,6 +195,15 @@ export const api = {
     request<{ role: string | null; allAccess: boolean; menus: MenuItem[] }>(`/api/users/${userId}/menus`, { token }),
   setUserBranches: (token: string, userId: string, branches: string[]) =>
     request<{ id: string; branches: string[] }>(`/api/users/${userId}/branches`, { method: "PUT", body: { branches }, token }),
+
+  // Master Data Klinik > Obat
+  obat: (token: string) => request<{ obat: Obat[]; branches: { kode: string; nama: string }[] }>("/api/obat", { token }),
+  obatOptions: (token: string) => request<ObatOptions>("/api/obat/options", { token }),
+  createObat: (token: string, input: ObatInput) => request<Obat>("/api/obat", { method: "POST", body: input, token }),
+  updateObat: (token: string, id: number, input: ObatInput) =>
+    request<Obat>(`/api/obat/${id}`, { method: "PUT", body: input, token }),
+  setObatStock: (token: string, id: number, cabang: string, input: ObatStockInput) =>
+    request<Obat>(`/api/obat/${id}/stock/${encodeURIComponent(cabang)}`, { method: "PUT", body: input, token }),
 
   // Management > Cabang
   branches: (token: string) => request<{ branches: Branch[] }>("/api/branches", { token }),
