@@ -15,6 +15,8 @@ import Login from "./pages/Login";
 import ObatPage from "./pages/ObatPage";
 import PasienPage from "./pages/PasienPage";
 import PendaftaranPage from "./pages/PendaftaranPage";
+import PengobatanPage from "./pages/PengobatanPage";
+import PengobatanFormPage from "./pages/PengobatanFormPage";
 import OrganisasiLokasiPage from "./pages/OrganisasiLokasiPage";
 import PerujukOtcPage from "./pages/PerujukOtcPage";
 import PrincipalPage from "./pages/PrincipalPage";
@@ -52,6 +54,8 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/master-data-klinik/icd" element={<MenuGuard><IcdPage /></MenuGuard>} />
             <Route path="/master-data-klinik/penjual-otc" element={<MenuGuard><PerujukOtcPage /></MenuGuard>} />
             <Route path="/front-office-klinik/pendaftaran-pasien" element={<MenuGuard><PendaftaranPage /></MenuGuard>} />
+            <Route path="/transaksi-klinik/pengobatan" element={<MenuGuard><PengobatanPage /></MenuGuard>} />
+            <Route path="/transaksi-klinik/pengobatan/new" element={<MenuGuard><PengobatanFormPage /></MenuGuard>} />
             <Route path="/master-data-satu-sehat/organisasi-lokasi" element={<MenuGuard><OrganisasiLokasiPage /></MenuGuard>} />
             {/* Routes from the menus table that have no page yet. */}
             <Route path="*" element={<MenuPage />} />

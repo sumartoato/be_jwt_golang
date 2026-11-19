@@ -408,7 +408,7 @@ LAB_PASSWORD=... scripts/import-lab-perujuk-otc.sh --replace
 - **Pelayanan** comes from `refjenisrawat` (POLI UMUM, POLI GIGI, LABORATORIUM, OBAT BEBAS, …). `refjenispanjang` holds the supporting examination types used by Penunjang, not the registration services.
 - **Status Kunjungan** comes from `refstatustransaksi`: NON KUN, CLOSE, DAFTAR, PROSES, PAYMENT, CANCEL. A new registration starts as DAFTAR. It can be edited (Pelayanan, Pakai Kartu) or cancelled only while it is still DAFTAR. Cancelling records who cancelled it, when, and the reason, which shows as a tooltip on the status.
 - **Total Point** is the patient's point balance in `refpasienpoint`.
-- **+ Add** opens a dialog with Tanggal (today or earlier), Pelayanan, Cabang and Pakai Kartu, above a patient search table where you tick one patient. Cabang is filled from the patient's branch and can be changed.
+- **+ Add** opens a dialog with Tanggal (today or earlier), Pelayanan, Cabang and Pakai Kartu, above a patient search table where you tick one patient. Cabang is filled from the patient's branch and can be changed. **Cari** opens the legacy "Pencarian" panel: pick a field (No RM, Nama, Umur, Alamat, Jam Kes), type a key and press the search button or Enter. Umur takes whole years and matches patients exactly that old today.
 - **Queue numbers** follow lab:
   - No Antrian counts per branch per day.
   - No Antrian Poli counts per branch, day and service. It gets a printed form only for services with `neednoantrian = 1`: the service's `firstcode` plus three digits, for example `U009` or `G001`.
@@ -424,6 +424,38 @@ LAB_PASSWORD=... scripts/import-lab-pendaftaran.sh --replace
 ```
 
 The data is personal (who visited which clinic and when): keep it on machines allowed to hold it, and never commit it.
+
+## Transaksi Klinik › Pengobatan (treatment sales)
+
+`/transaksi-klinik/pengobatan` lists treatment sales (`trxjual`, 317k rows in lab) with their totals (`trxjualtotal`), newest first, with server-side paging, search and sorting. The columns are No, Tanggal, No Kuitansi, Pasien, Dokter, Jenis Rawat, Pembayaran, Total, Cabang and Status.
+
+- **Dates.** A date range, both ends defaulting to today (clinic time). A sale counts for a day from 00:00 up to, but not including, 00:00 of the next day.
+- **Cari** opens the "Pencarian" panel: Nama Pasien, Jenis Pelayanan (`refjenisrawat`) and Status Kunjungan. Status Kunjungan is the status of the registration the sale belongs to (`trxpendaftaran.id_statustr` via `trxjual.id_kun`). The search button or Enter applies the panel.
+- **Filter** has Pembayaran (`refjenisbayar`; the unused duplicate TUNAI and HUTANG rows with flag 2 are hidden) and Status.
+- **Status** is the settlement status (`trxjualtotal.status`): 1 Close, 2 Cancel, anything else Open, including the 425 sales without a total row. A cancelled sale shows its reason as a tooltip. Total shows the drugs, procedures, examinations and discount as a tooltip.
+- **Search box** matches the receipt number, patient name, No RM, doctor or sale number. Exports fetch at most 5,000 matching rows.
+- **Branch authorization.** Users only see the sales of their own branches (`refbranchauth`). Asking for another branch answers `403`.
+- **+ Add** opens `/transaksi-klinik/pengobatan/new`, the treatment form laid out like the legacy `PengobatanDetail/New` screen: Cabang, No./Tgl Kuitansi, the Data Pendaftaran and Data Pasien panels, the Obat, Tindakan, Penunjang, Diagnosa and Pemeriksaan tabs, and Data Pembayaran. A sub-page like `…/new` follows its parent menu for access and shows "Add" in the breadcrumb.
+- **No. Daftar 🔍** opens the "Data Pendaftaran" lookup (`GET /api/pengobatan/pendaftaran`) and needs a Cabang first. It lists the branch's registrations with status DAFTAR, PROSES or PAYMENT that no sale refers to yet, from yesterday to today by default. It filters by Nama Pasien, Proses (status), Layanan and dates. Picking one fills the registration, the patient and Dokter PJ:
+  - Dokter PJ is the examination's doctor (`trxpemeriksaan.id_dok`);
+  - a service without an examination gets the branch's NON DOKTER;
+  - otherwise it shows "Belum di Pilih".
+
+  Changing the Cabang clears the picked registration.
+- **Dokter PJ 🔍** opens the "Data Dokter" lookup (`GET /api/pengobatan/dokter`), which also needs a Cabang. It lists the active doctors (`refmdokter.status` 1) that `refmdokterauth` maps to the branch, by Kode, with Nama Dokter and Jenis (`refjenisdokter`). Changing the Cabang clears Dokter PJ. In lab, CTM has 51 mapped doctors, 36 of them active.
+- **Not built yet:** the other lookups (patient, insurer, OTC referrer), adding items, Save, Kuitansi, Print and the row actions on the list. The form says so in a banner.
+
+The list replaces the legacy `spVTrxJualByPeriodeAuth8` procedure and its `VTrxJualWithAddress` view with one parameterized query in `internal/pengobatan`. The query joins only what the list shows; the view joined about 15 tables, including examination notes and addresses. It also drops `exec spUpdateRefMPasien_RT_RW`, which rewrote the patients' RT/RW on every list request.
+
+Migration `034_pengobatan.sql` creates `refjenisbayar`, `trxjual` and `trxjualtotal` with the lab layout, and indexes for the date and branch filters. `035_pengobatan_keys.sql` adds a foreign key to the payment type, a unique receipt number, and the total-to-sale link. It adds no keys to patients, doctors, services or registrations: lab has 7 sales of deleted patients, 1 of a deleted doctor and 112 of deleted registrations, and the Dokter and Pendaftaran re-imports truncate those tables with CASCADE. There is no branch key either: 355 sales from 2020–2025 use codes no branch has (`MED_`, `MGM_`, `MIT_`, `PRM_`), so branch authorization hides them, as it did in lab.
+
+```bash
+LAB_PASSWORD=... scripts/import-lab-pengobatan.sh            # about 12 seconds; skips the 43 totals without a sale
+LAB_PASSWORD=... scripts/import-lab-pengobatan.sh --replace
+LAB_PASSWORD=... scripts/import-lab-pemeriksaan.sh            # examination notes and Dokter PJ (036_pemeriksaan.sql), about 5 seconds
+```
+
+The data is personal (who was treated where, and what they paid): keep it on machines allowed to hold it, and never commit it.
 
 ### Master Data Satu Sehat › Organisasi & Lokasi
 
@@ -492,6 +524,7 @@ backend/
   internal/icd                ICD-X codes with server-side paging (/api/icd)
   internal/perujukotc         OTC referrers, "Penjual OTC" (/api/perujuk-otc)
   internal/pendaftaran        patient registrations, queue numbers, cancel (/api/pendaftaran)
+  internal/pengobatan         treatment sales list and the form's registration and doctor lookups (/api/pengobatan)
   internal/branchauth         which branches a user is mapped to (refbranchauth)
   internal/httpx              shared JSON response helpers
   internal/docs               OpenAPI spec and Swagger UI (SWAGGER_ENABLED)
@@ -503,8 +536,8 @@ frontend/
   src/components/branchView   per-branch columns, branch filter (Obat, Tindakan, Penunjang)
   src/components/FormKit      modal form, fields and amount inputs for master-data dialogs
   src/components/barcode.ts   Code 128 barcode (SVG) for patient cards
-  src/components/dates.ts     today, DD/MM/YYYY formatting and age
-  src/pages/                  Register, Login, Dashboard, RolePage, UserPage, BranchPage, ObatPage, TindakanPage, PenunjangPage, PasienPage, DokterPage, JamkesPage, DistributorPage, PrincipalPage, IcdPage, PerujukOtcPage, PendaftaranPage, MenuPage (placeholder)
+  src/components/dates.ts     today, addDays, DD/MM/YYYY formatting and age
+  src/pages/                  Register, Login, Dashboard, RolePage, UserPage, BranchPage, ObatPage, TindakanPage, PenunjangPage, PasienPage, DokterPage, JamkesPage, DistributorPage, PrincipalPage, IcdPage, PerujukOtcPage, PendaftaranPage, PengobatanPage, PengobatanFormPage (+ PendaftaranLookup, DokterLookup), MenuPage (placeholder)
 scripts/import-lab-obat.sh    copies drugs and stock from the legacy lab database
 scripts/import-lab-tindakan.sh copies procedures and prices per branch from lab
 scripts/import-lab-penunjang.sh copies supporting examinations and prices per branch from lab
@@ -514,6 +547,8 @@ scripts/import-lab-jamkes.sh  copies the insurers' PKS terms and item lists from
 scripts/import-lab-icd.sh     copies ICD-X codes and their types from lab
 scripts/import-lab-perujuk-otc.sh copies the OTC referrers from lab
 scripts/import-lab-pendaftaran.sh copies registrations, services, statuses and point balances from lab (personal data)
+scripts/import-lab-pengobatan.sh copies treatment sales, their totals and payment types from lab (personal data)
+scripts/import-lab-pemeriksaan.sh copies examination notes per registration from lab (medical data)
 scripts/import-lab-organisasi-lokasi.sh copies the SATUSEHAT organizations & locations from lab
 scripts/lib/lab.sh            shared helpers for the import scripts
   nginx.conf                  serves the SPA and proxies /api to the backend

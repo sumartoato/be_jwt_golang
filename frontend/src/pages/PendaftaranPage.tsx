@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Pencil, Plus, SlidersHorizontal, X } from "lucide-react";
-import { api, ApiError, Pendaftaran, PendaftaranOptions, PendaftaranPasien, STATUS_DAFTAR } from "../api";
+import { CalendarDays, Pencil, Plus, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
+import { api, ApiError, Pendaftaran, PendaftaranOptions, PendaftaranPasien, PasienSearchField, STATUS_DAFTAR } from "../api";
 import { useAuth } from "../auth/AuthContext";
 import DataTable, { Column, RemoteQuery } from "../components/DataTable";
 import { ALL_BRANCHES, BranchFilter, initialBranch, NoBranchNotice, orDash } from "../components/branchView";
@@ -9,6 +9,14 @@ import { FieldShell, Modal, useModal } from "../components/FormKit";
 
 const EXPORT_LIMIT = 5000;
 const num = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
+
+const PASIEN_FIELDS: { value: PasienSearchField; label: string; placeholder: string }[] = [
+  { value: "norm", label: "No RM", placeholder: "e.g. 33-01-03" },
+  { value: "nama", label: "Nama", placeholder: "Patient name" },
+  { value: "umur", label: "Umur", placeholder: "Age in years, e.g. 13" },
+  { value: "alamat", label: "Alamat", placeholder: "Address" },
+  { value: "jamkes", label: "Jam Kes", placeholder: "Insurer, e.g. BPJS" },
+];
 
 type Notice = { kind: "success" | "info" | "error"; text: string } | null;
 
@@ -297,6 +305,11 @@ function AddDialog({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const seq = useRef(0);
+  // "Pencarian" panel: the field and key being typed, and the pair last applied to the list.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [by, setBy] = useState<PasienSearchField>("norm");
+  const [key, setKey] = useState("");
+  const [applied, setApplied] = useState<{ by: PasienSearchField; key: string } | null>(null);
   const branchName = new Map(options.branches.map((b) => [b.kode, b.nama]));
 
   const fetchPasien = useCallback(
@@ -305,13 +318,28 @@ function AddDialog({
       const mine = ++seq.current;
       setHitsLoading(true);
       api
-        .pendaftaranPasien(token, { q: q.search, page: q.page, size: q.pageSize })
+        .pendaftaranPasien(token, { q: q.search, by: applied?.by ?? "", key: applied?.key ?? "", page: q.page, size: q.pageSize })
         .then((res) => mine === seq.current && setHits(res))
         .catch((err) => mine === seq.current && (err instanceof ApiError && err.status === 401 ? onUnauthorized() : setError(errorText(err))))
         .finally(() => mine === seq.current && setHitsLoading(false));
     },
-    [token], // eslint-disable-line react-hooks/exhaustive-deps
+    [token, applied], // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  const applySearch = () => {
+    const k = key.trim();
+    if (by === "umur" && k && !/^\d{1,3}$/.test(k)) {
+      setError("Umur must be a whole number of years.");
+      return;
+    }
+    setError("");
+    setApplied(k ? { by, key: k } : null);
+  };
+  const resetSearch = () => {
+    setKey("");
+    setApplied(null);
+    setError("");
+  };
 
   const choose = (p: PendaftaranPasien) => {
     setPasien((cur) => (cur?.id === p.id ? null : p));
@@ -395,7 +423,54 @@ function AddDialog({
             <option value="1">Ya</option>
           </select>
         </FieldShell>
+        <div className="reg-head-tools">
+          <button type="button" className="btn-add" aria-expanded={searchOpen} aria-controls="reg-search" onClick={() => setSearchOpen((o) => !o)}>
+            Cari <Search aria-hidden="true" />
+          </button>
+        </div>
       </div>
+      {searchOpen && (
+        <section id="reg-search" className="search-panel" aria-label="Pencarian pasien">
+          <h3>
+            <Search aria-hidden="true" /> Pencarian
+          </h3>
+          <div className="search-panel-row">
+            <FieldShell id="reg-search-by" label="Select">
+              <select id="reg-search-by" className="select" value={by} onChange={(e) => setBy(e.target.value as PasienSearchField)}>
+                {PASIEN_FIELDS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </FieldShell>
+            <FieldShell id="reg-search-key" label="Key">
+              <input
+                id="reg-search-key"
+                value={key}
+                inputMode={by === "umur" ? "numeric" : undefined}
+                placeholder={PASIEN_FIELDS.find((o) => o.value === by)?.placeholder}
+                onChange={(e) => setKey(e.target.value)}
+                onKeyDown={(e) => {
+                  // Enter searches instead of submitting the registration.
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    applySearch();
+                  }
+                }}
+              />
+            </FieldShell>
+            <div className="search-panel-actions">
+              <button type="button" className="icon-round" aria-label="Search patients" title="Search" onClick={applySearch}>
+                <Search aria-hidden="true" />
+              </button>
+              <button type="button" className="icon-round" aria-label="Reset patient search" title="Reset" onClick={resetSearch}>
+                <RotateCcw aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
       <p className="selected-patient" aria-live="polite">
         {pasien ? (
           <>
@@ -406,6 +481,7 @@ function AddDialog({
         )}
       </p>
       <DataTable
+        key={applied ? `${applied.by}:${applied.key}` : "all"}
         title="Pasien"
         columns={columns}
         rows={hits?.rows ?? []}

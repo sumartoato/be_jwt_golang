@@ -26,6 +26,7 @@ import (
 	"github.com/example/be_jwt_golang/backend/internal/orglokasi"
 	"github.com/example/be_jwt_golang/backend/internal/pasien"
 	"github.com/example/be_jwt_golang/backend/internal/pendaftaran"
+	"github.com/example/be_jwt_golang/backend/internal/pengobatan"
 	"github.com/example/be_jwt_golang/backend/internal/penunjang"
 	"github.com/example/be_jwt_golang/backend/internal/perujukotc"
 	"github.com/example/be_jwt_golang/backend/internal/principal"
@@ -82,6 +83,7 @@ func main() {
 	perujukotc.NewHandler(perujukotc.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
 	pendaftaran.NewHandler(pendaftaran.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
 	orglokasi.NewHandler(orglokasi.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	pengobatan.NewHandler(pengobatan.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
 	if cfg.SwaggerEnabled {
 		docs.Register(mux)
 		log.Printf("swagger UI enabled at /swagger/")

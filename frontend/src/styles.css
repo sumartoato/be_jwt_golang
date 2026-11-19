@@ -316,6 +316,8 @@ a { color: var(--primary); }
 }
 .btn-add svg { width: 15px; height: 15px; }
 .btn-add:hover { background: var(--accent); color: #fff; }
+a.btn-link { text-decoration: none; }
+.btn-add:disabled { opacity: 0.5; cursor: not-allowed; background: transparent; color: var(--accent); }
 
 /* ---------- DataTable ---------- */
 .dt { font-size: 0.82rem; }
@@ -650,6 +652,34 @@ td.dt-key { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font
 .visit-status.s6 { color: var(--error); text-decoration: line-through; }
 .dt-datetime { font-variant-numeric: tabular-nums; line-height: 1.35; }
 .modal.modal-xl { width: min(1600px, calc(100vw - 32px)); }
+/* Add-registration header: four fields plus the Cari button. */
+.form-grid-4.reg-head { grid-template-columns: repeat(4, minmax(0, 1fr)) auto; align-items: end; }
+.reg-head-tools { padding-bottom: 2px; }
+.reg-head-tools .btn-add svg { width: 14px; height: 14px; }
+/* Legacy-style "Pencarian" panel. */
+.search-panel { border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 12px rgb(0 0 0 / 0.12); margin: 4px 0 12px; }
+.search-panel h3 { display: flex; align-items: center; gap: 6px; margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 0.85rem; color: var(--primary); }
+.search-panel h3 svg { width: 14px; height: 14px; }
+.search-panel-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 16px; align-items: end; padding: 12px 14px; }
+.search-panel-row .field { margin: 0; }
+.search-panel-actions { display: flex; gap: 6px; padding-bottom: 6px; }
+.icon-round { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid var(--primary); border-radius: 50%; background: var(--card); color: var(--primary); cursor: pointer; }
+.icon-round:hover { background: var(--primary); color: #fff; }
+.icon-round svg { width: 15px; height: 15px; }
+.dt-table td.dt-wrap-sm { white-space: normal; min-width: 110px; max-width: 200px; }
+.search-panel-row.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
+.head-tools .btn-add svg { width: 14px; height: 14px; }
+/* Right-aligned amounts. */
+.dt-table th.dt-num, .dt-table td.dt-num { text-align: right; font-variant-numeric: tabular-nums; }
+/* Pengobatan settlement status. */
+.sale-status { font-size: 0.82rem; }
+.sale-status.close { color: var(--text); }
+.sale-status.open { color: var(--info); font-weight: 600; }
+.sale-status.cancel { color: var(--error); font-weight: 600; }
+@media (max-width: 860px) {
+  .form-grid-4.reg-head, .search-panel-row, .dt-table td.dt-wrap-sm { white-space: normal; min-width: 110px; max-width: 200px; }
+.search-panel-row.cols-3 { grid-template-columns: 1fr; }
+}
 /* Narrower wrapping columns so the patient table fits the dialog without scrolling sideways. */
 .modal-xl .dt-table td.dt-wrap { min-width: 110px; max-width: 220px; }
 .form-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -731,4 +761,97 @@ td.dt-key { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font
   .term-label, .term-shown, .item-no { padding-top: 0; text-align: left; }
   .dt-search input { width: 120px; }
   .content { padding: 16px; }
+}
+
+/* ---------- Transaksi form (Pengobatan > Add): legacy-style panels ---------- */
+.tx-page .head-tools .btn-small, .tx-page .head-tools .btn-add { display: inline-flex; align-items: center; gap: 6px; width: auto; }
+.tx-page .head-tools svg { width: 14px; height: 14px; }
+.tx-mock-note { display: flex; align-items: center; gap: 8px; }
+.tx-mock-note svg { width: 16px; height: 16px; flex: none; }
+.tx-page input, .tx-page textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.88rem;
+  background: var(--card);
+  color: var(--text);
+}
+.tx-page textarea { resize: vertical; }
+.tx-page input[readonly] { background: var(--bg); color: var(--muted); }
+.tx-page input:focus, .tx-page textarea:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+.tx-page input.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tx-page .select { min-width: 0; font-size: 0.88rem; }
+.tx-head { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 28px; margin-bottom: 14px; }
+.tx-head .tx-row { grid-template-columns: 110px minmax(0, 1fr); }
+.tx-grid { display: grid; gap: 16px; margin-bottom: 16px; align-items: start; }
+.tx-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tx-grid-main { grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); }
+.tx-card { border: 1px solid var(--accent); border-radius: 8px; background: var(--card); overflow: hidden; }
+.tx-card-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--accent); color: #fff; }
+.tx-card-head h2 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 0.95rem; font-weight: 600; }
+.tx-card-head h2 svg { width: 15px; height: 15px; }
+.tx-card-tool { display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; border-radius: 4px; background: transparent; color: #fff; cursor: pointer; }
+.tx-card-tool:hover { background: rgb(255 255 255 / 0.18); }
+.tx-card-tool svg { width: 16px; height: 16px; }
+.tx-card-body { padding: 14px 16px; }
+.tx-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; align-items: center; margin-bottom: 10px; }
+.tx-row > label { font-size: 0.85rem; text-align: right; color: var(--text); }
+.tx-head .tx-row > label { text-align: left; font-weight: 600; }
+.tx-row .req { color: var(--error); }
+.tx-ctrl { min-width: 0; }
+.tx-lookup { display: flex; max-width: 320px; }
+.tx-lookup input { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.tx-lookup-btn { display: inline-grid; place-items: center; flex: none; width: 36px; padding: 0; border: 1px solid var(--border); border-left: 0; border-radius: 0 6px 6px 0; background: var(--card); color: var(--text); cursor: pointer; }
+.tx-lookup-btn:hover { background: var(--bg); }
+.tx-lookup-btn svg { width: 14px; height: 14px; }
+.tx-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.tx-split-name { grid-template-columns: minmax(0, 1fr) 90px; }
+.tx-tabpanel { min-width: 0; }
+.tx-items-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.tx-items-head .btn-add { display: inline-flex; align-items: center; gap: 4px; width: auto; }
+.tx-sum, .tx-sum p { margin: 6px 0 0; font-size: 0.8rem; color: var(--muted); }
+.tx-sum-right { text-align: right; }
+.tx-items th { font-size: 0.8rem; white-space: nowrap; }
+.tx-otc { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 14px; font-size: 0.85rem; }
+.tx-otc .tx-lookup { width: 260px; }
+.tx-exam .tx-row { grid-template-columns: 190px minmax(0, 1fr); align-items: start; }
+.tx-exam .tx-row > label { padding-top: 7px; }
+.tx-vitals { display: flex; align-items: center; gap: 8px; max-width: 420px; }
+.tx-vitals input { width: 110px; flex: none; }
+.tx-vitals .unit { font-size: 0.8rem; color: var(--muted); }
+.tx-pay .tx-row { grid-template-columns: 110px minmax(0, 1fr); }
+.tx-total { display: block; margin-bottom: 14px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); text-align: right; font-size: 1.4rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+@media (max-width: 1100px) {
+  .tx-grid-2, .tx-grid-main, .tx-head { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .tx-row, .tx-head .tx-row, .tx-pay .tx-row, .tx-exam .tx-row { grid-template-columns: 1fr; gap: 4px; }
+  .tx-row > label { text-align: left; }
+  .tx-items-head { flex-direction: column; }
+}
+
+/* Lookup dialogs (Pengobatan > Add: Data Pendaftaran). */
+.lookup-filters { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) auto; gap: 12px; align-items: end; margin-bottom: 12px; }
+.lookup-filters label { display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; font-weight: 600; }
+.lookup-filters input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 400;
+  background: var(--card);
+  color: var(--text);
+}
+.lookup-filters .select { min-width: 0; font-weight: 400; }
+.lookup-filters .search-panel-actions { padding-bottom: 2px; }
+.lookup-dialog .modal-foot { display: flex; justify-content: flex-end; }
+.lookup-dialog .modal-foot .btn-small { width: auto; }
+@media (max-width: 860px) {
+  .lookup-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

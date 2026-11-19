@@ -3,7 +3,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import type { MenuItem } from "../api";
 import { iconFor } from "./icons";
-import { findTrail } from "./menuUtils";
+import { findPageTrail } from "./menuUtils";
 
 interface SidebarProps {
   menus: MenuItem[] | null;
@@ -18,7 +18,7 @@ export default function Sidebar({ menus, error, onRetry }: SidebarProps) {
   // Expand the groups that contain the current page.
   useEffect(() => {
     if (!menus) return;
-    const ancestors = findTrail(menus, pathname).slice(0, -1);
+    const ancestors = findPageTrail(menus, pathname).items.slice(0, -1);
     if (ancestors.length === 0) return;
     setOpen((prev) => {
       if (ancestors.every((a) => prev.has(a.id))) return prev;

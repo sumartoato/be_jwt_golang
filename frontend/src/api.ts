@@ -487,6 +487,113 @@ export interface PendaftaranPasien {
 /** Visit status ids (refstatustransaksi). */
 export const STATUS_DAFTAR = 3;
 
+/** Settlement status of a sale (trxjualtotal.status: 1 close, 2 cancel, else open). */
+export type PengobatanStatus = "open" | "close" | "cancel";
+
+/** Transaksi Klinik > Pengobatan: one treatment sale (trxjual + trxjualtotal). */
+export interface Pengobatan {
+  id: number;
+  /** "YYYY-MM-DD HH:MM:SS", clinic time. */
+  tgl: string | null;
+  noKwi: string;
+  idPas: number | null;
+  noRm: string;
+  /** Empty when the patient no longer exists. */
+  pasien: string;
+  dokter: string;
+  idJenisRawat: number | null;
+  jenisRawat: string;
+  idJenisBayar: number | null;
+  pembayaran: string;
+  totalObat: number;
+  totalTindakan: number;
+  totalPenunjang: number;
+  potongan: number;
+  total: number;
+  cabang: string;
+  status: PengobatanStatus;
+  cancelBy: string;
+  cancelAt: string | null;
+  cancelReason: string;
+}
+
+export interface PengobatanOptions {
+  pelayanan: LookupOption[];
+  statusKunjungan: LookupOption[];
+  pembayaran: LookupOption[];
+  /** Visit statuses a treatment can still be recorded for (DAFTAR, PROSES, PAYMENT). */
+  proses: LookupOption[];
+  branches: { kode: string; nama: string }[];
+  /** Today in the clinic's time zone. */
+  today: string;
+}
+
+/** A registration offered by the Pengobatan form's "Data Pendaftaran" lookup. */
+export interface PengobatanPendaftaran {
+  id: number;
+  tglMasuk: string | null;
+  idJenisRawat: number | null;
+  pelayanan: string;
+  isPemeriksaan: boolean;
+  idStatus: number | null;
+  status: string;
+  idPas: number | null;
+  noRm: string;
+  nama: string;
+  tglLahir: string | null;
+  alamat: string;
+  hp: string;
+  penanggung: string;
+  idJamkes: number | null;
+  jamkes: string;
+  noJamkes: string;
+  cabang: string;
+  /** Dokter PJ; null when not chosen yet. */
+  idDokter: number | null;
+  dokter: string;
+}
+
+/** A doctor in the Pengobatan form's Dokter PJ lookup. */
+export interface PengobatanDokter {
+  id: number;
+  nama: string;
+  /** refjenisdokter; empty when not set. */
+  jenis: string;
+}
+
+export interface PengobatanPendaftaranQuery {
+  cabang: string;
+  from: string;
+  to: string;
+  page: number;
+  size: number;
+  nama?: string;
+  pelayanan?: number;
+  status?: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+}
+
+export interface PengobatanQuery {
+  from: string;
+  to: string;
+  page: number;
+  size: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+  cabang?: string;
+  nama?: string;
+  pelayanan?: number;
+  statusKunjungan?: number;
+  pembayaran?: number;
+  status?: PengobatanStatus;
+}
+
+/** Fields of the patient "Pencarian" panel in the registration form. */
+export type PasienSearchField = "norm" | "nama" | "umur" | "alamat" | "jamkes";
+
 async function request<T>(path: string, options: { method?: string; body?: unknown; token?: string | null } = {}): Promise<T> {
   const headers: Record<string, string> = {};
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
@@ -640,6 +747,21 @@ export const api = {
   updateOrganisasiLokasi: (token: string, id: number, input: OrganisasiLokasiInput) =>
     request<OrganisasiLokasi>(`/api/organisasi-lokasi/${id}`, { method: "PUT", body: input, token }),
 
+  // Transaksi Klinik > Pengobatan (server-side paging)
+  pengobatan: (token: string, params: PengobatanQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: Pengobatan[]; total: number; unfilteredTotal: number }>(`/api/pengobatan?${qs}`, { token });
+  },
+  pengobatanOptions: (token: string) => request<PengobatanOptions>("/api/pengobatan/options", { token }),
+  pengobatanDokter: (token: string, cabang: string) =>
+    request<{ rows: PengobatanDokter[] }>(`/api/pengobatan/dokter?cabang=${encodeURIComponent(cabang)}`, { token }),
+  pengobatanPendaftaran: (token: string, params: PengobatanPendaftaranQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: PengobatanPendaftaran[]; total: number; unfilteredTotal: number }>(`/api/pengobatan/pendaftaran?${qs}`, { token });
+  },
+
   // Front Office Klinik > Pendaftaran Pasien (server-side paging)
   pendaftaran: (
     token: string,
@@ -650,8 +772,8 @@ export const api = {
     return request<{ rows: Pendaftaran[]; total: number; unfilteredTotal: number }>(`/api/pendaftaran?${qs}`, { token });
   },
   pendaftaranOptions: (token: string) => request<PendaftaranOptions>("/api/pendaftaran/options", { token }),
-  pendaftaranPasien: (token: string, params: { q?: string; page: number; size: number }) => {
-    const qs = new URLSearchParams({ page: String(params.page), size: String(params.size), q: params.q ?? "" });
+  pendaftaranPasien: (token: string, params: { q?: string; by?: PasienSearchField | ""; key?: string; page: number; size: number }) => {
+    const qs = new URLSearchParams({ page: String(params.page), size: String(params.size), q: params.q ?? "", by: params.by ?? "", key: params.key ?? "" });
     return request<{ rows: PendaftaranPasien[]; total: number; unfilteredTotal: number }>(`/api/pendaftaran/pasien?${qs}`, { token });
   },
   createPendaftaran: (token: string, input: { tanggal: string; idPas: number; idJenis: number; cabang: string; pakaiKartu: boolean }) =>

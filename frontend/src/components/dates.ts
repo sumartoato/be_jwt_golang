@@ -18,3 +18,10 @@ export function age(birth: string | null | undefined): number | null {
   if (now.getMonth() + 1 < m || (now.getMonth() + 1 === m && now.getDate() < d)) years--;
   return years;
 }
+
+/** YYYY-MM-DD plus n days (n may be negative). */
+export function addDays(day: string, n: number): string {
+  const [y, m, d] = day.split("-").map(Number);
+  const t = new Date(y, m - 1, d + n);
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+}

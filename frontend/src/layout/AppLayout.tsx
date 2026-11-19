@@ -3,7 +3,7 @@ import { Outlet, useLocation, useOutletContext } from "react-router-dom";
 import { ChevronLeft, ChevronRight, LogOut, Menu } from "lucide-react";
 import { api, ApiError, MenuItem, MeResponse } from "../api";
 import { useAuth } from "../auth/AuthContext";
-import { findTrail } from "./menuUtils";
+import { findPageTrail } from "./menuUtils";
 import Sidebar from "./Sidebar";
 
 export interface LayoutContext {
@@ -104,7 +104,7 @@ export default function AppLayout() {
     return () => window.removeEventListener("keydown", onKey);
   }, [navOpen]);
 
-  const trail = menus ? findTrail(menus, pathname) : [];
+  const trail = menus ? findPageTrail(menus, pathname) : { items: [] };
 
   return (
     <div className={["app", navOpen && "nav-open", collapsed && "sidebar-collapsed"].filter(Boolean).join(" ")}>
@@ -156,9 +156,10 @@ export default function AppLayout() {
           </button>
           <nav aria-label="Breadcrumb" className="breadcrumb">
             <ol>
-              {trail.map((item) => (
+              {trail.items.map((item) => (
                 <li key={item.id}>{item.title}</li>
               ))}
+              {trail.sub && <li>{trail.sub}</li>}
             </ol>
           </nav>
           {me && (
