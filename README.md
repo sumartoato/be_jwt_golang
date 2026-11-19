@@ -443,7 +443,18 @@ The data is personal (who visited which clinic and when): keep it on machines al
 
   Changing the Cabang clears the picked registration.
 - **Dokter PJ 🔍** opens the "Data Dokter" lookup (`GET /api/pengobatan/dokter`), which also needs a Cabang. It lists the active doctors (`refmdokter.status` 1) that `refmdokterauth` maps to the branch, by Kode, with Nama Dokter and Jenis (`refjenisdokter`). Changing the Cabang clears Dokter PJ. In lab, CTM has 51 mapped doctors, 36 of them active.
-- **Not built yet:** the other lookups (patient, insurer, OTC referrer), adding items, Save, Kuitansi, Print and the row actions on the list. The form says so in a banner.
+- **Add Obat** (Obat tab) opens the "Data Obat" lookup (`GET /api/pengobatan/obat`): the drugs sold at the branch (`trxstock.isactive` 1) with that branch's price and stock. Type Banyak and press Enter, or tick the row, to add it.
+  - Banyak must be more than 0 and may not exceed the branch stock, counting what is already in the list.
+  - Picking a drug that is already in the list adds to its quantity.
+  - Each line can be edited (Banyak, Dosis) or removed.
+  - Changing the Cabang empties the list, because prices and stock are per branch.
+- **Totals** follow the legacy rules found in lab (`trxjualobat`, `trxjualtotal`); see `src/pages/pengobatanCalc.ts`:
+  - Jumlah = Harga × Banyak;
+  - PPN = 10% of Jumlah for drugs with `kena_pajak` 1;
+  - "di bulatkan" rounds each line up to a multiple of 500, then sums them. This matches 15,957 of 17,044 recent lab sales; the rest are old unrounded amounts.
+
+  Total Kena Diskon and PPN Kena Diskon equal Total and PPN for now. The drugs' rounded total plus rounded PPN is the bill in Data Pembayaran, and Grand Total, Sisa and Kembalian follow from it.
+- **Not built yet:** the other lookups (patient, insurer, OTC referrer), the Tindakan, Penunjang and Diagnosa items, Save, Kuitansi, Print and the row actions on the list. The form says so in a banner.
 
 The list replaces the legacy `spVTrxJualByPeriodeAuth8` procedure and its `VTrxJualWithAddress` view with one parameterized query in `internal/pengobatan`. The query joins only what the list shows; the view joined about 15 tables, including examination notes and addresses. It also drops `exec spUpdateRefMPasien_RT_RW`, which rewrote the patients' RT/RW on every list request.
 
@@ -524,7 +535,7 @@ backend/
   internal/icd                ICD-X codes with server-side paging (/api/icd)
   internal/perujukotc         OTC referrers, "Penjual OTC" (/api/perujuk-otc)
   internal/pendaftaran        patient registrations, queue numbers, cancel (/api/pendaftaran)
-  internal/pengobatan         treatment sales list and the form's registration and doctor lookups (/api/pengobatan)
+  internal/pengobatan         treatment sales list and the form's registration, doctor and drug lookups (/api/pengobatan)
   internal/branchauth         which branches a user is mapped to (refbranchauth)
   internal/httpx              shared JSON response helpers
   internal/docs               OpenAPI spec and Swagger UI (SWAGGER_ENABLED)
@@ -537,7 +548,7 @@ frontend/
   src/components/FormKit      modal form, fields and amount inputs for master-data dialogs
   src/components/barcode.ts   Code 128 barcode (SVG) for patient cards
   src/components/dates.ts     today, addDays, DD/MM/YYYY formatting and age
-  src/pages/                  Register, Login, Dashboard, RolePage, UserPage, BranchPage, ObatPage, TindakanPage, PenunjangPage, PasienPage, DokterPage, JamkesPage, DistributorPage, PrincipalPage, IcdPage, PerujukOtcPage, PendaftaranPage, PengobatanPage, PengobatanFormPage (+ PendaftaranLookup, DokterLookup), MenuPage (placeholder)
+  src/pages/                  Register, Login, Dashboard, RolePage, UserPage, BranchPage, ObatPage, TindakanPage, PenunjangPage, PasienPage, DokterPage, JamkesPage, DistributorPage, PrincipalPage, IcdPage, PerujukOtcPage, PendaftaranPage, PengobatanPage, PengobatanFormPage (+ PendaftaranLookup, DokterLookup, ObatLookup, pengobatanCalc), MenuPage (placeholder)
 scripts/import-lab-obat.sh    copies drugs and stock from the legacy lab database
 scripts/import-lab-tindakan.sh copies procedures and prices per branch from lab
 scripts/import-lab-penunjang.sh copies supporting examinations and prices per branch from lab

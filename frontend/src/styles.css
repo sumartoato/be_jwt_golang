@@ -855,3 +855,15 @@ td.dt-key { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font
 @media (max-width: 860px) {
   .lookup-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Drug list and Data Obat lookup. */
+.qty-input { width: 80px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; font: inherit; font-size: 0.85rem; text-align: right; background: var(--card); color: var(--text); }
+.dosis-input { width: 110px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; font: inherit; font-size: 0.85rem; background: var(--card); color: var(--text); }
+.tx-page .qty-input, .tx-page .dosis-input { padding: 4px 8px; }
+.tx-page .qty-input { width: 80px; }
+.tx-page .dosis-input { width: 110px; }
+.stock-out { color: var(--error); font-weight: 600; }
+.tx-actions { white-space: nowrap; }
+.row-action.danger { color: var(--error); }
+.tx-items td { font-size: 0.85rem; }
+.tx-items th.dt-num, .tx-items td.dt-num { text-align: right; font-variant-numeric: tabular-nums; }

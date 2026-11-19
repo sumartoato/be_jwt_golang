@@ -561,6 +561,17 @@ export interface PengobatanDokter {
   jenis: string;
 }
 
+/** A drug in the Pengobatan form's "Data Obat" lookup, with the branch price and stock. */
+export interface PengobatanObat {
+  id: number;
+  nama: string;
+  jenis: string;
+  satuan: string;
+  harga: number;
+  stok: number;
+  kenaPajak: boolean;
+}
+
 export interface PengobatanPendaftaranQuery {
   cabang: string;
   from: string;
@@ -756,6 +767,8 @@ export const api = {
   pengobatanOptions: (token: string) => request<PengobatanOptions>("/api/pengobatan/options", { token }),
   pengobatanDokter: (token: string, cabang: string) =>
     request<{ rows: PengobatanDokter[] }>(`/api/pengobatan/dokter?cabang=${encodeURIComponent(cabang)}`, { token }),
+  pengobatanObat: (token: string, cabang: string) =>
+    request<{ rows: PengobatanObat[] }>(`/api/pengobatan/obat?cabang=${encodeURIComponent(cabang)}`, { token }),
   pengobatanPendaftaran: (token: string, params: PengobatanPendaftaranQuery) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));

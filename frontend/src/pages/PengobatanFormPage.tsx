@@ -1,10 +1,12 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronUp, FilePlus2, HeartPulse, Info, Plus, Printer, Receipt, Save, Search, X } from "lucide-react";
-import { api, ApiError, PengobatanOptions, PengobatanPendaftaran } from "../api";
+import { Check, ChevronDown, ChevronUp, FilePlus2, HeartPulse, Info, Pencil, Plus, Printer, Receipt, Save, Search, Trash2, X } from "lucide-react";
+import { api, ApiError, PengobatanObat, PengobatanOptions, PengobatanPendaftaran } from "../api";
 import { useAuth } from "../auth/AuthContext";
 import { age, fmtDate } from "../components/dates";
 import DokterLookup from "./DokterLookup";
+import ObatLookup from "./ObatLookup";
+import { jumlah, ObatLine, obatTotals, ppn } from "./pengobatanCalc";
 import PendaftaranLookup from "./PendaftaranLookup";
 
 /**
@@ -93,6 +95,129 @@ function ItemTable({ columns, empty }: { columns: string[]; empty: string }) {
 }
 
 const num = (s: string) => (Number.isFinite(Number(s)) ? Number(s) : 0);
+const plain = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
+const money2 = new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** The Obat tab's list: Banyak and Dosis can be edited in place, a line can be removed. */
+function ObatTable({
+  lines,
+  onChange,
+  onRemove,
+  onError,
+}: {
+  lines: ObatLine[];
+  onChange: (idObat: number, byk: number, dosis: string) => void;
+  onRemove: (idObat: number) => void;
+  onError: (msg: string) => void;
+}) {
+  const [editing, setEditing] = useState<{ idObat: number; byk: string; dosis: string } | null>(null);
+  const save = (l: ObatLine) => {
+    if (!editing) return;
+    const byk = Number(editing.byk.trim().replace(",", "."));
+    if (!Number.isFinite(byk) || byk <= 0) return onError(`Banyak untuk ${l.nama} harus lebih dari 0.`);
+    if (byk > l.stok) return onError(`Stok ${l.nama} tidak cukup: stok ${plain.format(l.stok)}, diminta ${plain.format(byk)}.`);
+    onChange(l.idObat, byk, editing.dosis.trim());
+    setEditing(null);
+  };
+  const cols = ["ID", "Obat", "Jenis", "Satuan", "Harga", "Banyak", "Jumlah", "PPN", "Dosis", "Action"];
+  return (
+    <div className="table-wrap">
+      <table className="data-table tx-items">
+        <thead>
+          <tr>
+            {cols.map((c) => (
+              <th key={c} className={["Harga", "Banyak", "Jumlah", "PPN"].includes(c) ? "dt-num" : undefined}>
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {lines.length === 0 ? (
+            <tr>
+              <td colSpan={cols.length} className="dt-empty">
+                Belum ada obat.
+              </td>
+            </tr>
+          ) : (
+            lines.map((l) => {
+              const edit = editing?.idObat === l.idObat ? editing : null;
+              return (
+                <tr key={l.idObat}>
+                  <td>{l.idObat}</td>
+                  <td>{l.nama}</td>
+                  <td>{l.jenis || "-"}</td>
+                  <td>{l.satuan || "-"}</td>
+                  <td className="dt-num">{plain.format(l.harga)}</td>
+                  <td className="dt-num">
+                    {edit ? (
+                      <input
+                        className="qty-input"
+                        type="number"
+                        min={0}
+                        step="any"
+                        aria-label={`Banyak ${l.nama}`}
+                        value={edit.byk}
+                        onChange={(e) => setEditing({ ...edit, byk: e.target.value })}
+                        onKeyDown={(e) => e.key === "Enter" && save(l)}
+                      />
+                    ) : (
+                      plain.format(l.byk)
+                    )}
+                  </td>
+                  <td className="dt-num">{plain.format(jumlah(l))}</td>
+                  <td className="dt-num">{plain.format(ppn(l))}</td>
+                  <td>
+                    {edit ? (
+                      <input
+                        className="dosis-input"
+                        aria-label={`Dosis ${l.nama}`}
+                        placeholder="3 x 1"
+                        maxLength={100}
+                        value={edit.dosis}
+                        onChange={(e) => setEditing({ ...edit, dosis: e.target.value })}
+                        onKeyDown={(e) => e.key === "Enter" && save(l)}
+                      />
+                    ) : (
+                      l.dosis
+                    )}
+                  </td>
+                  <td className="tx-actions">
+                    {edit ? (
+                      <>
+                        <button type="button" className="row-action" aria-label={`Simpan ${l.nama}`} title="Simpan" onClick={() => save(l)}>
+                          <Check aria-hidden="true" />
+                        </button>
+                        <button type="button" className="row-action" aria-label={`Batal ubah ${l.nama}`} title="Batal" onClick={() => setEditing(null)}>
+                          <X aria-hidden="true" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" className="row-action danger" aria-label={`Hapus ${l.nama}`} title="Hapus" onClick={() => onRemove(l.idObat)}>
+                          <Trash2 aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className="row-action"
+                          aria-label={`Ubah ${l.nama}`}
+                          title="Ubah banyak / dosis"
+                          onClick={() => setEditing({ idObat: l.idObat, byk: String(l.byk), dosis: l.dosis })}
+                        >
+                          <Pencil aria-hidden="true" />
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export default function PengobatanFormPage() {
   const { token, logout } = useAuth();
@@ -135,7 +260,7 @@ export default function PengobatanFormPage() {
         </div>
       </div>
       <p className="alert info tx-mock-note" role="note">
-        <Info aria-hidden="true" /> Mockup: pencarian No. Daftar dan Dokter PJ sudah tersambung. Pencarian lain (pasien, jamkes, obat), daftar item dan Save belum.
+        <Info aria-hidden="true" /> Mockup: No. Daftar, Dokter PJ dan Add Obat sudah tersambung. Pencarian pasien dan jamkes, Tindakan, Penunjang, Diagnosa dan Save belum.
       </p>
       {loadError ? (
         <p className="alert error" role="alert">
@@ -164,6 +289,8 @@ function PengobatanForm({ options }: { options: PengobatanOptions }) {
   const [dokter, setDokter] = useState<{ id: number; nama: string } | null>(null);
   const [lookupOpen, setLookupOpen] = useState(false);
   const [dokterOpen, setDokterOpen] = useState(false);
+  const [obatOpen, setObatOpen] = useState(false);
+  const [obat, setObat] = useState<ObatLine[]>([]);
   const notYet = (what: string) => setNotice(`Pencarian ${what} belum tersedia di mockup ini.`);
 
   // Both lookups list the data of one branch.
@@ -182,6 +309,20 @@ function PengobatanForm({ options }: { options: PengobatanOptions }) {
     if (!needBranch("dokter")) return;
     setNotice("");
     setDokterOpen(true);
+  };
+  const openObat = () => {
+    if (!needBranch("obat")) return;
+    setNotice("");
+    setObatOpen(true);
+  };
+  // Picking a drug already in the list adds to its quantity.
+  const addObat = (o: PengobatanObat, byk: number) => {
+    setObat((list) =>
+      list.some((l) => l.idObat === o.id)
+        ? list.map((l) => (l.idObat === o.id ? { ...l, byk: l.byk + byk } : l))
+        : [...list, { idObat: o.id, nama: o.nama, jenis: o.jenis, satuan: o.satuan, harga: o.harga, byk, kenaPajak: o.kenaPajak, stok: o.stok, dosis: "" }],
+    );
+    setObatOpen(false);
   };
   const pick = (r: PengobatanPendaftaran) => {
     setReg(r);
@@ -202,11 +343,17 @@ function PengobatanForm({ options }: { options: PengobatanOptions }) {
       setDokter(null);
       setNotice("Cabang diganti: Dokter PJ dikosongkan.");
     }
+    // Drug prices and stock are per branch.
+    if (obat.length > 0 && kode !== cabang) {
+      setObat([]);
+      setNotice((n) => (n ? `${n} Daftar obat juga dikosongkan (harga dan stok per cabang).` : "Cabang diganti: daftar obat dikosongkan (harga dan stok per cabang)."));
+    }
   };
   const umur = reg ? age(reg.tglLahir) : null;
 
-  // Items are not wired yet, so the total is 0; the payment fields already compute.
-  const total = 0;
+  // Drugs only for now; procedures and examinations will add to the bill.
+  const totals = obatTotals(obat);
+  const total = totals.bill;
   const grandTotal = Math.max(total - num(diskon) - num(tukarPoint), 0);
   const sisa = Math.max(grandTotal - num(payment), 0);
   const kembalian = Math.max(num(payment) - grandTotal, 0);
@@ -331,18 +478,31 @@ function PengobatanForm({ options }: { options: PengobatanOptions }) {
               <>
                 <div className="tx-items-head">
                   <div>
-                    <button type="button" className="btn-add" onClick={() => notYet("obat")}>
+                    <button type="button" className="btn-add" onClick={openObat}>
                       <Plus aria-hidden="true" /> Add Obat
                     </button>
-                    <p className="tx-sum">Total Kena Diskon : 0 di bulatkan : 0</p>
+                    <p className="tx-sum" aria-live="polite">
+                      Total Kena Diskon : {plain.format(totals.kenaDiskon)} di bulatkan : {plain.format(totals.kenaDiskonRounded)}
+                    </p>
                   </div>
-                  <div className="tx-sum tx-sum-right">
-                    <p>Total : 0 di bulatkan : 0</p>
-                    <p>PPN : 0 di bulatkan : 0</p>
-                    <p>PPN Kena Diskon : 0 di bulatkan : 0</p>
+                  <div className="tx-sum tx-sum-right" aria-live="polite">
+                    <p>
+                      Total : {plain.format(totals.total)} di bulatkan : {plain.format(totals.totalRounded)}
+                    </p>
+                    <p>
+                      PPN : {plain.format(totals.ppn)} di bulatkan : {plain.format(totals.ppnRounded)}
+                    </p>
+                    <p>
+                      PPN Kena Diskon : {plain.format(totals.ppnKenaDiskon)} di bulatkan : {plain.format(totals.ppnKenaDiskonRounded)}
+                    </p>
                   </div>
                 </div>
-                <ItemTable columns={["ID", "Obat", "Jenis", "Satuan", "Harga", "Banyak", "Jumlah", "PPN", "Dosis", "Action"]} empty="Belum ada obat." />
+                <ObatTable
+                  lines={obat}
+                  onChange={(id, byk, dosis) => setObat((list) => list.map((l) => (l.idObat === id ? { ...l, byk, dosis } : l)))}
+                  onRemove={(id) => setObat((list) => list.filter((l) => l.idObat !== id))}
+                  onError={setNotice}
+                />
                 <div className="tx-otc">
                   <label htmlFor="tx-otc">Perujuk Obat Bebas / OTC</label>
                   <Lookup id="tx-otc" placeholder="Perujuk OTC" onSearch={() => notYet("perujuk OTC")} />
@@ -433,7 +593,7 @@ function PengobatanForm({ options }: { options: PengobatanOptions }) {
 
         <Card title="Data Pembayaran" className="tx-pay">
           <output className="tx-total" aria-label="Total tagihan">
-            {money.format(total)}
+            {money2.format(total)}
           </output>
           <Row id="tx-payment" label="Payment">
             <input id="tx-payment" type="number" min={0} step="any" inputMode="decimal" className="num" placeholder="0" value={payment} onChange={(e) => setPayment(e.target.value)} />
@@ -465,6 +625,15 @@ function PengobatanForm({ options }: { options: PengobatanOptions }) {
             setDokterOpen(false);
           }}
           onClose={() => setDokterOpen(false)}
+        />
+      )}
+      {obatOpen && (
+        <ObatLookup
+          cabang={cabang}
+          branchName={options.branches.find((b) => b.kode === cabang)?.nama ?? cabang}
+          inList={new Map(obat.map((l) => [l.idObat, l.byk]))}
+          onPick={addObat}
+          onClose={() => setObatOpen(false)}
         />
       )}
     </>
