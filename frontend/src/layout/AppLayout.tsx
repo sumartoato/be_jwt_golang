@@ -83,6 +83,23 @@ export default function AppLayout() {
     // Load once per mount (and on retry); sliding token refreshes should not refetch.
   }, [attempt]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Sidebar title: "RME <branch>" for a user with exactly one branch, otherwise "RME".
+  const [brandBranch, setBrandBranch] = useState("");
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    api
+      .myBranches(token)
+      .then((res) => !cancelled && setBrandBranch(res.branches.length === 1 ? res.branches[0].nama || res.branches[0].kode : ""))
+      .catch(() => {
+        // Not critical: the title stays "RME".
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]); // eslint-disable-line react-hooks/exhaustive-deps
+  const brand = brandBranch ? `RME ${brandBranch}` : "RME";
+
   const refreshMenus = useCallback(async () => {
     if (!token) return;
     try {
@@ -110,7 +127,10 @@ export default function AppLayout() {
     <div className={["app", navOpen && "nav-open", collapsed && "sidebar-collapsed"].filter(Boolean).join(" ")}>
       <aside className="sidebar" id="sidebar">
         <div className="sidebar-brand">
-          <span>RME Cabang</span>
+          <span className="sidebar-brand-name" title={brand}>
+            RME
+            {brandBranch && <small className="sidebar-brand-branch">{brandBranch}</small>}
+          </span>
           <button
             ref={collapseBtn}
             type="button"
@@ -125,6 +145,9 @@ export default function AppLayout() {
           </button>
         </div>
         <Sidebar menus={menus} error={error} onRetry={() => setAttempt((n) => n + 1)} />
+        <p className="sidebar-version" title="Waktu build aplikasi. Kalau berbeda dari versi terbaru, tekan Ctrl+F5.">
+          Versi {__BUILD_TIME__}
+        </p>
       </aside>
       <div className="backdrop" onClick={() => setNavOpen(false)} aria-hidden="true" />
 

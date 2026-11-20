@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { CalendarDays, ChevronDown, Plus, RotateCcw, Search, X } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { CalendarDays, ChevronDown, Pencil, Plus, RotateCcw, Search, Undo2, X } from "lucide-react";
 import { api, ApiError, Pengobatan, PengobatanOptions, PengobatanQuery, PengobatanStatus } from "../api";
 import { useAuth } from "../auth/AuthContext";
 import DataTable, { Column, RemoteQuery } from "../components/DataTable";
 import { ALL_BRANCHES, BranchFilter, initialBranch, NoBranchNotice } from "../components/branchView";
 import { FieldShell } from "../components/FormKit";
+import CancelPengobatanDialog from "./CancelPengobatanDialog";
+import { fmtDate } from "../components/dates";
 
 const EXPORT_LIMIT = 5000;
 const money = new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -18,8 +20,19 @@ const NO_CARI: Cari = { nama: "", pelayanan: "", statusKunjungan: "" };
 
 type Notice = { kind: "info" | "error"; text: string } | null;
 
-/** Transaksi Klinik > Pengobatan: treatment sales at the user's branches, newest first. */
-export default function PengobatanPage() {
+/** The day before a YYYY-MM-DD date. */
+function dayBefore(day: string): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Transaksi Klinik > Pengobatan: treatment sales at the user's branches, newest
+ * first, with Edit and Cancel. With raw it is Report Klinik > Raw Data
+ * Pengobatan: the same list and filters with the patient's columns, read-only.
+ */
+export default function PengobatanPage({ raw = false }: { raw?: boolean }) {
   const { token, logout } = useAuth();
   const [options, setOptions] = useState<PengobatanOptions | null>(null);
   const [from, setFrom] = useState("");
@@ -36,16 +49,20 @@ export default function PengobatanPage() {
   const [loadError, setLoadError] = useState("");
   const [notice, setNotice] = useState<Notice>(null);
   const seq = useRef(0);
+  const navigate = useNavigate();
+  const [cancelling, setCancelling] = useState<Pengobatan | null>(null);
+  // The table's last query, reloaded after a cancel.
+  const lastQuery = useRef<RemoteQuery | null>(null);
 
   const expired = useCallback(() => logout("Your session has expired. Please log in again."), [logout]);
 
   useEffect(() => {
     if (!token) return;
-    api
-      .pengobatanOptions(token)
+    (raw ? api.rawDataPengobatanOptions(token) : api.pengobatanOptions(token))
       .then((o) => {
         setOptions(o);
-        setFrom(o.today);
+        // Raw Data Pengobatan defaults to yesterday and today (H-1 to H), like the other reports.
+        setFrom(raw ? dayBefore(o.today) : o.today);
         setTo(o.today);
         setBranch(initialBranch(o.branches));
       })
@@ -75,10 +92,10 @@ export default function PengobatanPage() {
   const fetchPage = useCallback(
     (q: RemoteQuery) => {
       if (!token || !from) return;
+      lastQuery.current = q;
       const mine = ++seq.current;
       setLoading(true);
-      api
-        .pengobatan(token, params(q))
+      (raw ? api.rawDataPengobatan(token, params(q)) : api.pengobatan(token, params(q)))
         .then((res) => mine === seq.current && setPage(res))
         .catch((err) => {
           if (mine !== seq.current) return;
@@ -92,7 +109,7 @@ export default function PengobatanPage() {
 
   const fetchAll = async (q: RemoteQuery): Promise<Pengobatan[]> => {
     if (!token) return [];
-    const res = await api.pengobatan(token, params(q, EXPORT_LIMIT, 1));
+    const res = await (raw ? api.rawDataPengobatan : api.pengobatan)(token, params(q, EXPORT_LIMIT, 1));
     if (res.total > EXPORT_LIMIT) {
       setNotice({ kind: "info", text: `The export holds the first ${EXPORT_LIMIT.toLocaleString("en-US")} of ${res.total.toLocaleString("en-US")} treatments. Narrow the dates to export the rest.` });
     }
@@ -106,7 +123,7 @@ export default function PengobatanPage() {
   };
 
   const columns: Column<Pengobatan>[] = [
-    { key: "id", header: "No", value: (r) => String(r.id) },
+    { key: "id", header: raw ? "No Trans" : "No", value: (r) => String(r.id) },
     {
       key: "tgl",
       header: "Tanggal",
@@ -158,6 +175,52 @@ export default function PengobatanPage() {
         </span>
       ),
     },
+    {
+      key: "action",
+      header: "Action",
+      value: () => "",
+      sortable: false,
+      exportable: false,
+      // Edit opens the sale; Cancel is offered until the sale is cancelled.
+      render: (r) => (
+        <span className="row-actions">
+          <button type="button" className="row-action" aria-label={`Edit ${r.noKwi || r.id}`} title="Edit" onClick={() => navigate(`/transaksi-klinik/pengobatan/edit/${r.id}`)}>
+            <Pencil aria-hidden="true" />
+          </button>
+          {r.status !== "cancel" && (
+            <button type="button" className="row-action danger" aria-label={`Cancel ${r.noKwi || r.id}`} title="Cancel" onClick={() => setCancelling(r)}>
+              <Undo2 aria-hidden="true" />
+            </button>
+          )}
+        </span>
+      ),
+    },
+  ];
+
+  // Raw Data Pengobatan: the legacy report's columns, in its order.
+  const col = (key: string) => columns.find((c) => c.key === key)!;
+  const rawColumns: Column<Pengobatan>[] = [
+    col("id"),
+    col("tgl"),
+    col("noKwi"),
+    { key: "noRm", header: "No RM", value: (r) => r.noRm || "-" },
+    col("pasien"),
+    { key: "alamat", header: "Alamat", value: (r) => r.alamat || "-", className: "dt-wrap-sm" },
+    { key: "rt", header: "RT", value: (r) => r.rt || "", sortable: false },
+    { key: "rw", header: "RW", value: (r) => r.rw || "", sortable: false },
+    { key: "kelurahan", header: "Kelurahan", value: (r) => r.kelurahan || "-", className: "dt-wrap-sm" },
+    { key: "tglLahir", header: "Tanggal Lahir", value: (r) => (r.tglLahir ? fmtDate(r.tglLahir) : "-"), sortValue: (r) => r.tglLahir },
+    { key: "jenisKelamin", header: "Jenis Kelamin", value: (r) => r.jenisKelamin || "-" },
+    col("dokter"),
+    col("jenisRawat"),
+    { key: "asuransi", header: "Asuransi", value: (r) => r.asuransi || "-", className: "dt-wrap-sm" },
+    col("pembayaran"),
+    col("total"),
+    col("cabang"),
+    { ...col("status"), render: undefined },
+    { key: "cancelReason", header: "Alasan Cancel", value: (r) => r.cancelReason, sortable: false, className: "dt-wrap-sm" },
+    { key: "potongan", header: "Diskon", value: (r) => money.format(r.potongan), sortValue: (r) => r.potongan, className: "dt-num" },
+    { key: "createUser", header: "Dibuat Oleh", value: (r) => r.createUser || "-" },
   ];
 
   const branches = options?.branches ?? [];
@@ -167,7 +230,7 @@ export default function PengobatanPage() {
   return (
     <section className="panel">
       <div className="page-head">
-        <h1>Pengobatan</h1>
+        <h1>{raw ? "Raw Data Pengobatan" : "Pengobatan"}</h1>
         <div className="head-tools">
           <label className="date-range" title="Tanggal transaksi">
             <CalendarDays aria-hidden="true" />
@@ -215,9 +278,11 @@ export default function PengobatanPage() {
               </div>
             )}
           </div>
-          <Link to="/transaksi-klinik/pengobatan/new" className="btn-add btn-link">
-            <Plus aria-hidden="true" /> Add
-          </Link>
+          {!raw && (
+            <Link to="/transaksi-klinik/pengobatan/new" className="btn-add btn-link">
+              <Plus aria-hidden="true" /> Add
+            </Link>
+          )}
         </div>
       </div>
       {cariOpen && options && (
@@ -288,14 +353,25 @@ export default function PengobatanPage() {
         <DataTable
           // New filters start again from page 1.
           key={`${from}|${to}|${branch}|${cari.nama}|${cari.pelayanan}|${cari.statusKunjungan}|${pembayaran}|${status}`}
-          title={`Pengobatan ${from}${to !== from ? " - " + to : ""}`}
-          columns={columns}
+          title={`${raw ? "Raw Data Pengobatan" : "Pengobatan"} ${from}${to !== from ? " - " + to : ""}`}
+          columns={raw ? rawColumns : columns}
           rows={page?.rows ?? []}
           rowKey={(r) => r.id}
           initialSort={{ key: "id", dir: "desc" }}
           defaultPageSize={10}
           toolbarStart={<BranchFilter branches={branches} value={branch} onChange={setBranch} />}
           remote={{ total: page?.total ?? 0, unfilteredTotal: page?.unfilteredTotal ?? 0, loading: loading || !page, onQuery: fetchPage, fetchAll }}
+        />
+      )}
+      {cancelling && (
+        <CancelPengobatanDialog
+          sale={cancelling}
+          onDone={(msg) => {
+            setCancelling(null);
+            setNotice({ kind: "info", text: msg });
+            if (lastQuery.current) fetchPage(lastQuery.current);
+          }}
+          onClose={() => setCancelling(null)}
         />
       )}
     </section>

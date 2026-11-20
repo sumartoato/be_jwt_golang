@@ -49,6 +49,7 @@ When running the backend outside Docker it reads `DATABASE_URL` (e.g. `postgres:
 | POST   | `/api/auth/login`    | none   | `{email, password}`                    | `200 {token, expiresAt}`; `401` |
 | POST   | `/api/auth/refresh`  | Bearer | none                                   | `200 {token, expiresAt}` (new token) |
 | GET    | `/api/me`            | Bearer | none                                   | `200 {id, email, message: "Hello <email>, welcome back"}` |
+| GET    | `/api/me/branches`   | Bearer | none                                   | `200 {branches: [{kode, nama}]}`: the branches the caller is mapped to (`refbranchauth`), shown on the home page; no menu needed |
 | GET    | `/api/menus`         | Bearer | none                                   | `200 {menus: [{id, title, icon, path, children}], role}`: the sidebar menu for the caller's role |
 | GET    | `/api/roles`         | Bearer + Role menu | none                       | `200 {roles: [{id, name, allAccess, menuIds, userCount}], menus}` |
 | POST   | `/api/roles`         | Bearer + Role menu | `{name, allAccess, menuIds}` | `201` role; `400`; `409` if the name exists |
@@ -454,7 +455,64 @@ The data is personal (who visited which clinic and when): keep it on machines al
   - "di bulatkan" rounds each line up to a multiple of 500, then sums them. This matches 15,957 of 17,044 recent lab sales; the rest are old unrounded amounts.
 
   Total Kena Diskon and PPN Kena Diskon equal Total and PPN for now. The drugs' rounded total plus rounded PPN is the bill in Data Pembayaran, and Grand Total, Sisa and Kembalian follow from it.
-- **Not built yet:** the other lookups (patient, insurer, OTC referrer), the Tindakan, Penunjang and Diagnosa items, Save, Kuitansi, Print and the row actions on the list. The form says so in a banner.
+- **Add Tindakan** (Tindakan tab) needs a Cabang and a Dokter PJ. It opens "Data Tindakan Dokter : <doctor>" (`GET /api/pengobatan/tindakan`), which lists the doctor's procedures (`trxtindakan`) that are active and offered at the branch, with the branch price (`reftindakandetail.hjual`).
+  - A procedure with `reftindakan.isedit` 1 has an editable price, in the lookup and in the list.
+  - Lines show their doctor (in lab every procedure line carries the sale's doctor), so a new Dokter PJ empties the list, as does a new Cabang.
+  - Procedure totals are not rounded: lab stores exactly the sum of Harga × Banyak.
+  - The bill in Data Pembayaran is the drugs' rounded total plus the procedures' and examinations' totals.
+- **Add Penunjang** (Penunjang tab) needs a Cabang. It opens "Data Tindakan" (`GET /api/pengobatan/penunjang`), which lists the supporting examinations that are active and offered at the branch, with the branch price (`refpenunjangdetail.hjual`) and their type (`refjenispanjang`). In lab, MED has 399 of them.
+  - The list works like Tindakan without a doctor column.
+  - A new Cabang empties it.
+  - Totals are not rounded (lab: `tot_pnjng` = sum of Harga × Banyak).
+- **Add Diagnosa** (Diagnosa tab) opens "Data Diagnosa" (`GET /api/pengobatan/icd`): the 18,505 ICD-X codes, paged and searched on the server, by ID, 10 rows per page.
+  - It reuses the Master ICD query but needs only the Pengobatan menu.
+  - Diagnoses are not per branch and carry no price.
+  - A code already in the list cannot be picked again (lab stores only the code per line, `trxjualdiagnosa.icd_id`).
+- **Pemeriksaan** tab: the examination of the picked registration, loaded from `trxpemeriksaan` (`GET /api/pengobatan/pemeriksaan/{idKun}`) and saved there with **Simpan Pemeriksaan** (`PUT`).
+  - It saves one row per registration (insert, or update on `id_kun`), with Dokter PJ as `id_dok`, the user and the clinic time.
+  - It saves on its own, before the sale itself is saved.
+  - Fields: Keluhan Utama, Anamnesis, Tekanan Darah (sistole/diastole), Berat/Tinggi (whole numbers, as in the table), Suhu, Pemeriksaan Fisik, Rekap Hasil Penunjang, Hasil Penunjang, Rencana Penatalaksanaan, Hasil Pemeriksaan Dokter and Tindakan Dokter. Lengths and plausible values are checked.
+  - Only registrations at the caller's branches (another branch's answers 404), and only while the visit is DAFTAR, PROSES or PAYMENT (409 otherwise).
+  - The tab stays mounted, so typing survives a tab switch.
+- **Save** (`POST /api/pengobatan`) records the sale in one transaction, following the lab data:
+  - **What it checks:** the registration must be at the chosen branch, still DAFTAR, PROSES or PAYMENT, and not billed yet (409 otherwise).
+  - **Prices:** they come from the master data at the branch; only an editable procedure price is taken from the form. A drug sold beyond the branch stock answers 409.
+  - **trxjual:** `no_kwi` = YYMM + branch + 4-digit number per branch and month (e.g. 2611CTM0312; this rule matches all of lab), `tgl` = Tgl Kuitansi + the current clinic time, `flow_status` Close, and the patient's insurer.
+  - **trxjualtotal:** tot_obat (drug lines rounded up to 500, PPN 10% for taxable drugs), tot_tndk and tot_pnjng (not rounded), `total`, `potongan` (Diskon), `pembayaran` (money handed over; empty Payment = exactly the amount due), `cicilan` (the settled part), `piutang` (what stays owed), `no_close` = YY + sale id, status 1.
+  - **Lines:** `trxjualobat` (with the branch cost price and Dosis), `trxjualtindakan` (with the Dokter PJ), `trxjualpnjng` and `trxjualdiagnosa`.
+  - **trxstock:** the branch stock goes down by the drugs sold. Lab does not show whether the legacy app did this.
+  - **trxpendaftaran:** the registration becomes CLOSE.
+
+  Save first opens the **Pembayaran** dialog: Jumlah (the bill), Diskon and Payment, with Close, Diskon (applies the discount to the form) and Bayar $ (saves). It previews Grand Total, Kembalian or Sisa. A Payment of 0 means paid exactly, and the Payment and Diskon fields of Data Pembayaran only show the result.
+  The form then shows the receipt number and locks; **New** starts the next sale. Save refuses while the Pemeriksaan tab has unsaved typing, because a closed visit cannot change its examination. Tukar Point is disabled: points are never used in lab.
+- **Kuitansi** (after Save) opens the "Kwitansi" dialog (`GET /api/pengobatan/kuitansi/{id}`).
+  - It shows Tanggal, No Kwitansi, No RM / name, Sudah terima dari (the patient by default), Untuk Pembayaran, Biaya Pengobatan/Tindakan/Penunjang and Banyaknya uang (total minus discount).
+  - **Print** (`POST /api/pengobatan/kuitansi/{id}/cetak`) records the print and opens `Kuitansi_<id>.pdf` in a new tab with the browser's print dialog, in the legacy "KWITANSI PENGOBATAN" layout: amount in words (`src/components/terbilang.ts`), "Jakarta , 20 Nov 2026", the printing user (e-mail without the domain) and the print time.
+  - The first print writes `trxjualcetak` (migration `038_kuitansi.sql`) with `no_cetak` = `refbranch.kode_kwt`-YY-MM-5 digits, numbered per code and month (MED prints BTA, MIT prints CKG). This matches all of lab. Reprints keep the first number.
+  - "Sudah terima dari" and "Untuk Pembayaran" are only printed: lab stores them nowhere.
+- **Print ▾** (after Save) records the print like the Kuitansi (the first print gets the `no_cetak`), loads the sale with its lines (`GET /api/pengobatan/nota/{id}`) and prints one of four PDFs (`src/pages/notaPdf.ts`):
+  - **A5 Reguler**: the legacy "BUKTI PEMBAYARAN" receipt (`/Print/Reguler`):
+    - the print number, the branch, its company (`refbranch.nama_npwp`), address and phone;
+    - No Transaksi (`no_kwi/dd/mm/yyyy/id`), patient, No RM, Penanggung (`refmpasien.penanggung`), Kasir, Asuransi, Pelayanan and Dokter;
+    - every line with its amount, then Sub Total, Diskon (when any), Grand Total, Pembayaran, Kembalian, Piutang (when any) and Total Point (`refpasienpoint.point`, the patient's balance);
+    - the print time from the server.
+  - **A5 Bold**: the same in bold;
+  - **Thermal**: the bill on an 80 mm roll;
+  - **A5 Summary**: only the cost per group and the payment.
+
+  Printing (`src/components/printPdf.ts`): the click opens a new tab right away (popup blockers allow it only during the click), and the PDF is shown there with the print dialog open, like the legacy `/Print/Reguler`. If the tab is blocked, the PDF is downloaded instead.
+
+  Thermal and A5 Summary are a first version until legacy samples are available. The branches' address, phone and company were filled from lab where they were empty.
+- **Lines history:** migration `037_pengobatan_detail.sql` creates the four line tables (deleted with their sale), and `scripts/import-lab-pengobatan-detail.sh` copies them from lab: about 1.3 million lines in a minute, skipping the 104 lines whose sale no longer exists.
+- **Row actions on the list** (Action column):
+  - **Edit** opens `/transaksi-klinik/pengobatan/edit/{id}` (legacy `/PengobatanDetail/Edit/{id}`). It loads the sale (`GET /api/pengobatan/detail/{id}`) into the same form, read-only: registration, patient, the four tabs, payment, and a Kembali | Kuitansi | Print header. A cancelled sale shows who cancelled it, when and why. The tabs and the card toggles stay usable; only the inputs are locked (also after Save).
+  - **Cancel** (sales not yet cancelled) opens the legacy "Cancel Pengobatan" dialog: "Apakah data No Trans <id> akan di cancel?" with a required Alasan (max 100 characters). Yes calls `POST /api/pengobatan/detail/{id}/cancel`:
+    - `trxjualtotal` gets status 2 with `cancelby` (the e-mail without its domain), `cancelat` and `cancelreason`, like lab's 3,084 cancelled sales;
+    - the amounts and lines are kept, and the registration stays CLOSE (as in lab);
+    - the drugs sold go back into the branch stock, undoing what Save took out (confirmed with the clinic; lab keeps no stock history);
+    - a second cancel answers 409.
+  - Both follow branch authorization: another branch's sale answers 404.
+- **Not built yet:** the other lookups (patient, insurer, OTC referrer) and changing a saved sale. The form says so in a banner.
 
 The list replaces the legacy `spVTrxJualByPeriodeAuth8` procedure and its `VTrxJualWithAddress` view with one parameterized query in `internal/pengobatan`. The query joins only what the list shows; the view joined about 15 tables, including examination notes and addresses. It also drops `exec spUpdateRefMPasien_RT_RW`, which rewrote the patients' RT/RW on every list request.
 
@@ -464,6 +522,8 @@ Migration `034_pengobatan.sql` creates `refjenisbayar`, `trxjual` and `trxjualto
 LAB_PASSWORD=... scripts/import-lab-pengobatan.sh            # about 12 seconds; skips the 43 totals without a sale
 LAB_PASSWORD=... scripts/import-lab-pengobatan.sh --replace
 LAB_PASSWORD=... scripts/import-lab-pemeriksaan.sh            # examination notes and Dokter PJ (036_pemeriksaan.sql), about 5 seconds
+LAB_PASSWORD=... scripts/import-lab-pengobatan-detail.sh      # sale lines (037_pengobatan_detail.sql), after import-lab-pengobatan.sh
+LAB_PASSWORD=... scripts/import-lab-penerimaan-barang.sh      # goods receipts, lines, totals, suppliers (039_penerimaan_barang.sql)
 ```
 
 The data is personal (who was treated where, and what they paid): keep it on machines allowed to hold it, and never commit it.
@@ -476,6 +536,324 @@ The data is personal (who was treated where, and what they paid): keep it on mac
 LAB_PASSWORD=... scripts/import-lab-organisasi-lokasi.sh            # migration 033_organization_location.sql creates the table
 LAB_PASSWORD=... scripts/import-lab-organisasi-lokasi.sh --replace
 ```
+
+## Transaksi Klinik › Penerimaan Barang (goods receipts)
+
+`/transaksi-klinik/penerimaan-barang` mirrors the legacy `/GoodReceive` list. It shows the goods receipts at the user's branches, newest first.
+
+- **Tables:** migration `039_penerimaan_barang.sql` creates four tables, with the legacy columns and types:
+  - `trxfaktur`: the receipts;
+  - `trxfakturobat`: their drug lines, deleted with their receipt;
+  - `trxfakturtotal`: total, discount, paid and owed;
+  - `refsupplier`: the suppliers.
+- **Import:** `scripts/import-lab-penerimaan-barang.sh` copies them from lab: 16 suppliers, 7,855 receipts, 42,390 lines and 7,804 totals (51 receipts have no total).
+- **Columns:**
+  - No, No GR (`no_fak`), Tgl Trans (`tgl`, the entry date), Tgl GR (`tgl_fak`, the receipt date);
+  - Supplier: "-" when `id_supp` is 0, as for 6,322 of the receipts;
+  - Total (`trxfakturtotal.total`), Cabang, Action;
+  - **Action is View only**: receipts are not edited.
+- **Filters:**
+  - the period of the entry date (default yesterday and today, H-1 to H);
+  - Cari: No GR, Supplier (with "- (tanpa supplier)");
+  - Cabang, search (No GR, supplier, branch or receipt number), sort, paging and export.
+- **Add** opens the receipt form at `/transaksi-klinik/penerimaan-barang/new` (legacy `/GoodReceive/New`).
+  - **Header:**
+    - No Trans (filled on Save), Cabang\*, Distributor\*, No GR\* (max 15 characters) and Tanggal GR (today by default, not later);
+    - Distributor is picked in the **Data Distributor** lookup (`refdistributorobat`, 122 rows by code).
+  - **Daftar Obat:**
+    - **Add Obat** opens **Data Obat**: the drugs stocked at the chosen branch (`trxstock`), with ID, Obat, Satuan (selling unit), Harga (the branch's buying price `trxstock.hbeli`) and Stok;
+    - each row takes No Batch (default 0), Banyak (1), Exp Date (a year from today) and Disc % (0), and the tick adds it;
+    - a line can be edited (No Batch, Banyak, Exp Date, Disc %) or removed;
+    - Jumlah = Harga × Banyak × (1 − Disc/100), and the card shows the Total;
+    - choosing another branch empties the list (prices and stock are per branch).
+  - **Save** (`POST /api/penerimaan-barang`) runs in one transaction, following lab's data:
+    - `trxfaktur`: tgl now, `tgl_fak` and `tgl_jtp` = Tanggal GR, `id_supp` 0, `id_jenis_byr` 1, the user (e-mail without its domain) as creator;
+    - `trxfakturobat`: the server's buying price, `tot_qjb` = Banyak;
+    - `trxfakturtotal`: total = Σ Jumlah (as for 99.9% of lab), fully paid, status 1, `no_close` = YYMM + id (2611 + 13809 = 261113809);
+    - **the branch stock goes up by Banyak**. In lab this fits 63% of the stock rows, against 34% for Banyak × isi per box.
+  - The form is then read-only with the new No Trans; **New** starts another; **Print** is not built yet.
+  - Validation: the branch must be the user's, the drug stocked there, Banyak > 0, Disc 0–100, No Batch ≤ 20.
+- **View** opens `/transaksi-klinik/penerimaan-barang/view/{id}` (`GET /api/penerimaan-barang/detail/{id}`).
+  - It shows the same form, read-only, with No Trans, Cabang, Distributor, No GR, Tanggal GR and the drug lines.
+  - A note gives who entered it and when, the supplier and the total.
+  - The header has only Kembali and Print; Add Obat and the line actions are hidden.
+  - Another branch's receipt, or one that does not exist, answers 404.
+- **Not built yet:** Print.
+- **Endpoints:** `GET /api/penerimaan-barang` and `/options`, guarded by the menu and limited to the caller's branches (package `backend/internal/penerimaan`).
+- **Checked against lab:** 10 Oct – 8 Nov 2026 lists 261 receipts with the same total and the same latest rows (13809 MJ/ETC/08112026 875,000, …).
+
+## Report Klinik › Raw Data Pengobatan
+
+`/report-klinik/raw-data-pengobatan` mirrors the legacy `/RawDataPengobatan` report. It is the Pengobatan list with the patient's columns, read-only (no Add, Edit or Cancel).
+
+- **Columns, in the legacy order:** No Trans, Tanggal, No Kuitansi, No RM, Pasien, Alamat, RT, RW, Kelurahan (`refkelurahan`), Tanggal Lahir, Jenis Kelamin (`refgender`), Dokter, Jenis Rawat, Asuransi (the sale's `trxjual.id_jamkes`), Pembayaran, Total, Cabang, Status, Alasan Cancel, Diskon (`trxjualtotal.potongan`) and Dibuat Oleh (`trxjual.create_user`).
+- **Same query as the list:** date range (default yesterday and today, H-1 to H, like the other reports), Cari (Nama Pasien, Jenis Pelayanan, Status Kunjungan), Filter (Pembayaran, Status), Cabang, search, sort, paging and export (Copy, Excel, CSV, PDF, Print), limited to the caller's branches.
+- **Endpoints:** `GET /api/report-klinik/raw-data-pengobatan` and `/options`. They run the Pengobatan list handlers but are guarded by the report's own menu, so a role can open the report without the Pengobatan menu.
+
+## Report Klinik › Penjualan Obat
+
+`/report-klinik/penjualan-obat` mirrors the legacy `/PenjualanObat` report: the drugs sold per day at the user's branches.
+
+- **One row per clinic day, drug, price, branch and settlement status.** Banyak is summed over the sales (two sales of 10 make one row of 20). Lab has no procedure or view for this report; the grouping follows the legacy screen, which shows no receipt or patient.
+- **Columns:** Tanggal, Obat, Jenis (`refjenisobat`), Satuan (selling unit), Harga (`trxjualobat.hjual`), Banyak, Cabang and Status. Jumlah (Harga × Banyak) is hidden; turn it on under Column visibility.
+- **Sorting:** by drug name, then day and branch, like the legacy list. Every column can be sorted.
+- **Filters:** date range (default yesterday and today), Cari (Nama Obat, Jenis Obat, Status), Cabang, search, paging and export.
+- **Endpoints:** `GET /api/report-klinik/penjualan-obat` and `/options`, guarded by the report's menu and limited to the caller's branches. The code lives in `backend/internal/reportklinik`, the package for the Report Klinik pages.
+- **Checked against the database:** for 7–8 Nov 2026 the report has 364 rows, and its Banyak (2,725) and Jumlah (12,397,575) totals equal the sums over `trxjualobat`. A month loads in about 0.2 s.
+
+## Report Klinik › Penjualan Tindakan
+
+`/report-klinik/penjualan-tindakan` mirrors the legacy `/PenjualanTindakan` report. It shows every procedure line sold at the user's branches, newest first.
+
+- **Columns:**
+  - Tanggal, Tindakan, Jenis (`refjenistindakan`), Dokter, Pasien;
+  - Fee Dokter, Harga Jual (`trxjualtindakan.hjual`), Banyak, Total Fee Dokter;
+  - Cabang, Status.
+- **Dokter** is the line's doctor (`trxjualtindakan.id_dok`), or the sale's Dokter PJ when the line has none.
+- **Fee Dokter** is the branch's fee for the procedure, `reftindakandetail.hbeli` (unique per procedure and branch).
+  - This matches every fee on the legacy screen (for example 21,500 at PRM and 23,750 at CTM for the same consultation).
+  - Sales do not store a fee, so the report always uses the fee currently in the master data.
+  - **Total Fee Dokter** = Fee Dokter × Banyak.
+- **Filters:** date range (default yesterday and today), Cari (Nama Tindakan, Dokter, Status), Cabang, search, sort, paging and export.
+- **Endpoints:** `GET /api/report-klinik/penjualan-tindakan` and `/options`, guarded by the report's menu and limited to the caller's branches.
+- **Checked against the database:** for 7–8 Nov 2026 there are 235 lines, sales of 10,267,500 and doctor fees of 3,732,420, equal to direct sums over `trxjualtindakan`.
+
+## Report Klinik › Penjualan Penunjang
+
+`/report-klinik/penjualan-penunjang` mirrors the legacy `/PenjualanPenunjang` report: every supporting examination sold at the user's branches, newest first.
+
+- **Columns:**
+  - Tanggal, No RM, Nama, Penunjang;
+  - Jenis (`refjenispanjang`, e.g. LABORATORIUM CV, LAB MOHC);
+  - Dokter (the sale's Dokter PJ);
+  - Harga (`trxjualpnjng.hjual`), Banyak;
+  - Cabang, Status, Dibuat Oleh (`trxjual.create_user`).
+- **Filters:**
+  - date range (default yesterday and today);
+  - Cari: Nama Penunjang, Jenis Penunjang, Status;
+  - Cabang, search, sort, paging and export.
+- **Endpoints:** `GET /api/report-klinik/penjualan-penunjang` and `/options`, guarded by the report's menu and limited to the caller's branches.
+- **Checked against the database:**
+  - 7–8 Nov 2026: 15 lines, 1,426,500;
+  - October 2026: 310 lines, 25,728,500;
+  - both equal direct sums over `trxjualpnjng`. A month loads in about 0.04 s.
+
+## Report Klinik › Penjualan OTC
+
+`/report-klinik/penjualan-otc` mirrors the legacy `/PenjualanOTC` report. It lists every drug line of type **OTC** (`refjenisobat`) sold at the user's branches, newest sale first.
+
+- **Columns:**
+  - No Trans, Tanggal, No Kuitansi, Obat, Jenis;
+  - Perujuk (`refperujukotc`, via `trxjual.id_perujuk_otc`);
+  - Banyak, Harga (`trxjualobat.hjual`), Ppn 11% (`trxjualobat.ppn`);
+  - Total (Harga × Banyak + PPN);
+  - Cabang, Status.
+- **Which lines:**
+  - Lines are chosen by drug type, not by referrer: sales with a referrer also hold ETIKAL and SOFT DRINK drugs, which the legacy screen does not show here (soft drinks have their own report).
+  - An OTC line of a sale without a referrer is listed with Perujuk "-" (42 of 142 lines on 7–8 Nov 2026).
+  - PPN is 0 on every stored line so far.
+- **Filters:**
+  - date range (default yesterday and today);
+  - Cari: Nama Obat, Perujuk, Status;
+  - Cabang, search (drug, receipt, referrer, branch or sale id), sort, paging and export.
+- **Endpoints:** `GET /api/report-klinik/penjualan-otc` and `/options`, guarded by the report's menu and limited to the caller's branches.
+- **Checked against the database:**
+  - 7–8 Nov 2026: 142 lines, 3,099,668;
+  - October 2026: 2,064 lines, 46,343,074;
+  - both equal direct sums over `trxjualobat`. A month loads in about 0.05 s.
+
+## Report Klinik › Penjualan Softdrink
+
+`/report-klinik/penjualan-softdrink` mirrors the legacy `/PenjualanSoftdrink` report. It is Penjualan OTC for the drugs of type **SOFT DRINK**, with the same columns, filters and referrer.
+
+- **Code:**
+  - the backend runs the OTC query with the drug type as a bound parameter (`JenisOTC` / `JenisSoftDrink` in `reportklinik/otc.go`);
+  - the page is `PenjualanOTCPage` with `softdrink`.
+- **Endpoints:** `GET /api/report-klinik/penjualan-softdrink` and `/options`, guarded by the report's own menu.
+- **Checked against the database:**
+  - 7–8 Nov 2026: 15 lines, 124,307;
+  - October 2026: 183 lines, 1,780,814;
+  - the OTC report's figures are unchanged.
+
+## Report Klinik › Pasien Baru
+
+`/report-klinik/pasien-baru` mirrors the legacy `/PasienBaru` report. It lists the visits of patients registered in the period at the user's branches, newest first.
+
+- **What counts:** a sale (`trxjual`) in the period whose patient was registered (`refmpasien.create_date`) in the same period. A new patient with two visits has two rows, as on the legacy screen.
+- **Columns:**
+  - Tanggal Kunjungan (the sale's date and time), No RM, Nama Pasien, Jenis Rawat;
+  - Tempat Lahir, Tanggal Lahir, Umur (years on the visit day), Alamat;
+  - Tanggal Daftar (the day the patient was registered);
+  - Dokter (the sale's Dokter PJ), Status (the sale's), Cabang.
+- **Filters:**
+  - date range (default yesterday and today), for both the visit and the registration;
+  - Cari: Nama Pasien, Jenis Rawat, Status;
+  - Cabang, search, sort, paging and export.
+  - Sorting by Umur sorts by birth date the other way round.
+- **Endpoints:** `GET /api/report-klinik/pasien-baru` and `/options`, guarded by the report's menu and limited to the caller's branches.
+- **Checked against the database:**
+  - 7–8 Nov 2026: 63 visits by 59 new patients;
+  - October 2026: 1,487 visits by 1,295 new patients;
+  - both equal a direct count. A month loads in about 0.06 s.
+
+## Report Klinik › Rekap Asuransi
+
+`/report-klinik/rekap-asuransi` mirrors the legacy `/ReportAsuransi` report. It lists the insured sales at the user's branches, newest first.
+
+- **Which sales:** those whose insurer (`trxjual.id_jamkes`) is not NON ASURANSI.
+- **Rows per sale:**
+  - the first row carries Tanggal, No RM, Card Number (`trxjual.no_jamkes`), Perusahaan (the insurer), Pasien, Dokter, Diagnosa (ICD names), Cabang and Status;
+  - then the items, grouped under Keterangan Obat, Tindakan and Penunjang, with Details, Banyak, Harga and Total (Harga × Banyak). An empty group still has one row with zeros, as in the legacy report;
+  - a Total row closes the sale (`trxjualtotal.total`, the sum of its items).
+- **Paging:** it counts sales (10 sales per page with all their rows), whereas the legacy page cut a sale across pages. The export lists every row. This uses `pageEntries`, a new DataTable option for an entry shown as several rows.
+- **Filters:**
+  - date range (default yesterday and today, H-1 to H);
+  - Cari: Nama Pasien, Perusahaan, Status;
+  - Cabang, search and sort by the sale's columns.
+- **Endpoints:** `GET /api/report-klinik/rekap-asuransi` and `/options`, guarded by the report's menu and limited to the caller's branches.
+- **Checked against the database:**
+  - 2–8 Nov 2026: 47 sales, 166 drug lines, 61 procedure lines and 53 diagnoses, total 5,027,999;
+  - October 2026: 235 sales, total 29,307,409;
+  - both equal direct counts. A month loads in about 0.02 s.
+
+## Report Klinik › Transaksi Harian
+
+`/report-klinik/transaksi-harian` mirrors the legacy `/ReportHarian` report. It lists every sale at the user's branches, newest first.
+
+- **Columns:**
+  - Tanggal, No RM, Pasien, Pelayanan, Dokter, Pembayaran;
+  - Obat, Tindakan, Penunjang (`trxjualtotal.tot_obat`, `tot_tndk`, `tot_pnjng`), Total;
+  - Cabang, Status, Diskon (`potongan`).
+- **Filters:**
+  - date range (default yesterday and today);
+  - **Pelayanan** in the toolbar (ALL or one service), as on the legacy screen;
+  - Cari: Nama Pasien, Pembayaran, Status;
+  - Cabang, search, sort, paging and export.
+- **Endpoints:** `GET /api/report-klinik/transaksi-harian` and `/options`, guarded by the report's menu and limited to the caller's branches.
+- **Checked against the database:**
+  - 7–8 Nov 2026: 235 sales, obat 12,400,000, tindakan 10,267,500, penunjang 1,426,500, total 24,094,000, diskon 714,325;
+  - October 2026: 4,126 sales, total 490,283,008;
+  - both equal direct sums, and the procedure and examination totals agree with Penjualan Tindakan and Penjualan Penunjang. A month loads in about 0.04 s.
+
+## Report Klinik › All Stok
+
+`/report-klinik/all-stok` mirrors the legacy `/ReportAllStock` report. It lists every drug at every branch of the user (`trxstock`), the dearest first.
+
+- **Columns:**
+  - Periode, Kode, Obat, Satuan Beli, Isi Per Box, Satuan Jual;
+  - Harga Beli and Harga Jual (the branch's `trxstock.hbeli`, `hjual`);
+  - Jenis, Principal, Distributor, Kode Moving PO;
+  - Stok Awal, Jual Obat, Stok Akhir, Cabang.
+- **Stock movement:** the app changes stock through sales (Save takes drugs out, Cancel puts them back) and goods receipts (Penerimaan Barang adds them). Stock adjustments are not recorded yet. Going back from today's stock:
+  - Stok Akhir = current stock + the drugs sold after the period − the drugs received after it;
+  - Jual Obat = the drugs sold in the period, cancelled sales left out;
+  - Stok Awal = Stok Akhir + Jual Obat − the drugs received in the period.
+  - The page says so in a note.
+  - The receipts are imported from lab (`scripts/import-lab-penerimaan-barang.sh`). Lab's adjustments (`trxstokadjus`) are not: even with them only about 75% of lab's current stock can be rebuilt from its history.
+  - For October 2026: Stok Awal 472,554 and Stok Akhir 481,125, with 62,614 received in the period and 5,638 after it, equal to a direct sum.
+- **Filters:** period (default yesterday and today), Cari (Nama Obat, Jenis Obat, Kode Moving PO), Cabang, search (drug, type, principal, distributor, branch or drug id), sort, paging and export.
+- **Endpoints:** `GET /api/report-klinik/all-stok` and `/options`, guarded by the report's menu and limited to the caller's branches.
+- **Checked against the database:** for 7–8 Nov 2026 and for October 2026, over all 24,570 rows:
+  - Jual Obat equals the non-cancelled sales in the period (2,664 and 54,043);
+  - Stok Akhir equals the current stock plus the sales after it;
+  - Stok Awal = Stok Akhir + Jual Obat on every row.
+  - A page loads in about 0.2 s.
+
+## Report Klinik › Rujukan
+
+`/report-klinik/rujukan` mirrors the legacy `/ReportRujukan` report: the sales of external doctors at the user's branches, newest first.
+
+- **Which sales:** the Dokter PJ is an external doctor, `refmdokter.id_internal = 3` (EKSTERNAL in `refdokterinternal`; 1 is -, 2 INTERNAL).
+- **Rows:**
+  - one per supporting examination of the sale; Total is that examination's Harga × Banyak;
+  - a sale without examinations has one row with an empty Penunjang and Total 0, as on the legacy screen.
+- **Columns:** Tanggal, No RM, Pasien, Dokter Eksternal, Jenis Rawat, Penunjang, Total, Cabang, Status.
+- **Filters:**
+  - date range (default yesterday and today, H-1 to H) and 20 rows a page, as in the legacy report;
+  - Cari: Nama Pasien, Dokter Eksternal, Status;
+  - Cabang, search, sort and export.
+- **Endpoints:** `GET /api/report-klinik/rujukan` and `/options`, guarded by the report's menu and limited to the caller's branches.
+- **Checked against the database:** for 9 Oct – 8 Nov 2026 there are 781 rows from 767 sales, 86 with an examination, total 7,801,500, equal to a direct count. A page loads in about 0.03 s.
+
+## Report Klinik › Pendaftaran
+
+`/report-klinik/pendaftaran` mirrors the legacy `/ReportPendaftaranKlinik` report: the registrations (`trxpendaftaran`) at the user's branches, newest first.
+
+- **Columns:**
+  - No Pendaftaran, No Antrian (`no_antri`), Tanggal / Waktu (`tgl_masuk`), Pelayanan;
+  - Status Kun (`refstatustransaksi`: CLOSE, DAFTAR, PROSES, PAYMENT, CANCEL, NON KUN);
+  - No RM, Nama Pasien, Umur (years on the registration day), Alamat, Cabang.
+- **Filters:**
+  - date range (default yesterday and today, H-1 to H);
+  - Cari: Nama Pasien, Pelayanan, Status Kunjungan;
+  - Cabang, search (also by registration number), sort, paging and export.
+- **Endpoints:** `GET /api/report-klinik/pendaftaran` and `/options`, guarded by the report's menu and limited to the caller's branches.
+- **Checked against the database:**
+  - 7–8 Nov 2026: 246 registrations (CLOSE 214, DAFTAR 28, PROSES 4);
+  - October 2026: 4,805;
+  - both equal a direct count per status. A month loads in about 0.03 s.
+
+## Report Klinik › Report Pendapatan
+
+`/report-klinik/report-pendapatan` mirrors the legacy `/ReportPendapatan` screen. It has no table: a **Data Pendapatan** form downloads the "Laporan Pendapatan Klinik" PDF.
+
+- **Form:**
+  - Cabang (required, the user's branches);
+  - Layanan (All or one service);
+  - Dokter (All or one doctor): the doctors of the chosen branch (`refmdokterauth`, by id). It is disabled until a branch is chosen and goes back to All when the branch changes;
+  - Dari Tanggal / Sampai Tanggal (default yesterday and today, H-1 to H);
+  - **Clear** resets the form, **Download** saves `Report_Income.pdf` (`src/pages/pendapatanPdf.ts`).
+- **The PDF (A4, as the legacy one):**
+  - header "Klinik" with the branch name and phone, a double rule, the title;
+  - Nama Poli, Dokter, Tanggal Posting (today), Petugas (the user, e-mail without its domain) and Periode;
+  - a row per sale, oldest first: No, Tanggal / Waktu (with milliseconds), No Kwt, Nama Pasien, Obat, Tindakan, Penunjang, Total. The header is on the first page only and no row is cut across pages;
+  - the summary:
+    - "Jakarta, <date>", Mengetahui and the user;
+    - Jumlah Pasien, Pasien Baru (sales whose patient was registered in the period) and Pasien Lama;
+    - Total Obat, Tindakan and Penunjang, then Total Tagihan, Potongan and Total Pendapatan (Tagihan − Potongan).
+- **Cancelled sales are left out**: they are no income.
+- **Endpoints**, guarded by the report's menu:
+  - `GET /api/report-klinik/pendapatan?cabang=…` (400 without a branch, 403 for another branch's);
+  - `/options`;
+  - `/dokter?cabang=…`.
+- **Checked against the database:** for KLINIK CITRA MEDIKA on 7–8 Nov 2026 the PDF lists 66 sales (19 new and 47 returning patients), obat 3,690,500, tindakan 2,522,500, penunjang 69,000, total 6,282,000, equal to a direct sum.
+
+## Report Klinik › Report Diagnosa
+
+`/report-klinik/report-diagnosa` mirrors the legacy `/ReportDiagnosa` report. It lists every diagnosis (`trxjualdiagnosa`) of the sales at the user's branches, newest sale first; a sale with two diagnoses has two rows.
+
+- **Columns:**
+  - No Trans, Tanggal (date and time), No RM, Pasien, Tanggal Lahir, Usia (years on the visit day), Jenis Kelamin;
+  - Dokter, Jenis Rawat, ICD.X and Diagnosa (`reficd`);
+  - Resep Obat: the sale's drugs as "NAMA (banyak) , NAMA (banyak)", built for the page's rows only;
+  - Keluhan Utama (`trxpemeriksaan.keluhan_utama` of the visit), Saturasi Oksigen, Cabang.
+- **Saturasi Oksigen** is shown as "-". Neither this database nor lab stores it: the legacy app added it later.
+- **Filters:**
+  - date range (default yesterday and today, H-1 to H), 5 rows a page as in the legacy report;
+  - Cari: Nama Pasien, ICD.X / Diagnosa (code or name), Jenis Rawat;
+  - Cabang, search, sort and export.
+- **Endpoints:** `GET /api/report-klinik/diagnosa` and `/options`, guarded by the report's menu and limited to the caller's branches.
+- **Checked against the database:**
+  - 7–8 Nov 2026: 77 diagnoses of 68 sales, 75 with a prescription and 57 with a complaint;
+  - October 2026: 1,652 diagnoses of 1,392 sales;
+  - both equal a direct count. A month loads in about 0.03 s.
+
+## Report Klinik › Report ICD Dinkes
+
+`/report-klinik/report-icd-dinkes` mirrors the legacy `/ReportDinkes` report: the cases of one branch per ICD code and service, for the health office (Dinas Kesehatan).
+
+- **What counts as a case:** a diagnosis (`trxjualdiagnosa`) of a non-cancelled sale in the period. They are grouped by ICD code (`reficd`) and service (Jenis Rawat).
+- **Columns:**
+  - Kode, ICD, Jenis Rawat;
+  - the age groups, by the patient's age on the visit day: 0-7 Hari, 8-28 Hari, 1-11 Bulan, 1-4, 5-9, 10-14, 15-19, 20-44, 45-59 and >59 Tahun;
+  - Laki-laki and Perempuan (`refgender` 1 and 2), and Total.
+  - A patient without a birth date is in no age group but is in the total.
+- **Filters:** the period (default yesterday and today, H-1 to H) and **Cabang** in the toolbar (one branch, the first of the user's by default), as on the legacy screen; search (ICD code or name, service), sort (highest code first by default), paging and export.
+- **Endpoints:** `GET /api/report-klinik/icd-dinkes` and `/options`, guarded by the report's menu and limited to the caller's branches.
+- **Checked against the database:**
+  - KLINIK CITRA MEDIKA, 7–8 Nov 2026: 16 cases in 8 lines (3 male, 13 female);
+  - October 2026: 401 cases at CTM and 292 at KMJ;
+  - all equal a direct count, every case falls in exactly one age group. A month loads in about 0.03 s.
 
 ## How the 15-minute inactivity logout works
 
@@ -535,8 +913,8 @@ backend/
   internal/icd                ICD-X codes with server-side paging (/api/icd)
   internal/perujukotc         OTC referrers, "Penjual OTC" (/api/perujuk-otc)
   internal/pendaftaran        patient registrations, queue numbers, cancel (/api/pendaftaran)
-  internal/pengobatan         treatment sales list and the form's registration, doctor and drug lookups (/api/pengobatan)
-  internal/branchauth         which branches a user is mapped to (refbranchauth)
+  internal/pengobatan         treatment sales list and the form's lookups (registration, doctor, drug, procedure, examination, ICD-X) and the examination save (/api/pengobatan)
+  internal/branchauth         which branches a user is mapped to (refbranchauth), GET /api/me/branches
   internal/httpx              shared JSON response helpers
   internal/docs               OpenAPI spec and Swagger UI (SWAGGER_ENABLED)
 frontend/
@@ -548,7 +926,7 @@ frontend/
   src/components/FormKit      modal form, fields and amount inputs for master-data dialogs
   src/components/barcode.ts   Code 128 barcode (SVG) for patient cards
   src/components/dates.ts     today, addDays, DD/MM/YYYY formatting and age
-  src/pages/                  Register, Login, Dashboard, RolePage, UserPage, BranchPage, ObatPage, TindakanPage, PenunjangPage, PasienPage, DokterPage, JamkesPage, DistributorPage, PrincipalPage, IcdPage, PerujukOtcPage, PendaftaranPage, PengobatanPage, PengobatanFormPage (+ PendaftaranLookup, DokterLookup, ObatLookup, pengobatanCalc), MenuPage (placeholder)
+  src/pages/                  Register, Login, Dashboard, RolePage, UserPage, BranchPage, ObatPage, TindakanPage, PenunjangPage, PasienPage, DokterPage, JamkesPage, DistributorPage, PrincipalPage, IcdPage, PerujukOtcPage, PendaftaranPage, PengobatanPage, PengobatanFormPage (+ PendaftaranLookup, DokterLookup, ObatLookup, TindakanLookup, DiagnosaLookup, PemeriksaanTab, pengobatanCalc), MenuPage (placeholder)
 scripts/import-lab-obat.sh    copies drugs and stock from the legacy lab database
 scripts/import-lab-tindakan.sh copies procedures and prices per branch from lab
 scripts/import-lab-penunjang.sh copies supporting examinations and prices per branch from lab
@@ -560,6 +938,8 @@ scripts/import-lab-perujuk-otc.sh copies the OTC referrers from lab
 scripts/import-lab-pendaftaran.sh copies registrations, services, statuses and point balances from lab (personal data)
 scripts/import-lab-pengobatan.sh copies treatment sales, their totals and payment types from lab (personal data)
 scripts/import-lab-pemeriksaan.sh copies examination notes per registration from lab (medical data)
+scripts/import-lab-pengobatan-detail.sh copies the sale lines (drugs, procedures, examinations, diagnoses) and receipt prints from lab (medical data)
+scripts/import-lab-penerimaan-barang.sh copies the goods receipts, their lines and totals, and the suppliers from lab
 scripts/import-lab-organisasi-lokasi.sh copies the SATUSEHAT organizations & locations from lab
 scripts/lib/lab.sh            shared helpers for the import scripts
   nginx.conf                  serves the SPA and proxies /api to the backend

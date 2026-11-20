@@ -68,3 +68,19 @@ export function obatTotals(lines: ObatLine[]): ObatTotals {
     bill: totalRounded + taxRounded,
   };
 }
+
+/** A procedure line. Procedure totals are not rounded (lab: trxjualtotal.tot_tndk = sum of Harga x Banyak). */
+export interface TindakanLine {
+  idTindakan: number;
+  nama: string;
+  jenis: string;
+  /** The Dokter PJ when the line was added; every line belongs to the sale's doctor. */
+  dokter: string;
+  harga: number;
+  /** The price may be changed (reftindakan.isedit = 1). */
+  isEdit: boolean;
+  byk: number;
+}
+
+export const tindakanJumlah = (l: TindakanLine) => l.harga * l.byk;
+export const tindakanTotal = (lines: TindakanLine[]) => lines.reduce((sum, l) => sum + tindakanJumlah(l), 0);

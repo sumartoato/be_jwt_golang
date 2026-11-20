@@ -39,6 +39,11 @@ export interface RemoteOptions<T> {
   onQuery: (q: RemoteQuery) => void;
   /** Rows to export: everything matching the search (the server may cap it). Defaults to the current page. */
   fetchAll?: (q: RemoteQuery) => Promise<T[]>;
+  /**
+   * Entries on this page when one entry is shown as several rows (e.g. a sale
+   * with its items); total and paging count entries. Defaults to the row count.
+   */
+  pageEntries?: number;
 }
 
 interface Props<T> {
@@ -328,7 +333,7 @@ export default function DataTable<T>({
         <p className="dt-info">
           {matching === 0
             ? "Showing 0 to 0 of 0 entries"
-            : `Showing ${num.format(start + 1)} to ${num.format(start + pageRows.length)} of ${num.format(matching)} entries`}
+            : `Showing ${num.format(start + 1)} to ${num.format(start + (remote?.pageEntries ?? pageRows.length))} of ${num.format(matching)} entries`}
           {matching !== allRows && ` (filtered from ${num.format(allRows)} total entries)`}
         </p>
         <nav className="dt-pages" aria-label="Pagination">

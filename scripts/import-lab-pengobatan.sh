@@ -21,7 +21,7 @@ REPLACE=0
 require_empty trxjual "$REPLACE"
 
 echo "Clearing app sales tables..."
-app -c "TRUNCATE trxjualtotal, trxjual, refjenisbayar RESTART IDENTITY"
+app -c "TRUNCATE trxjualcetak, trxjualobat, trxjualtindakan, trxjualpnjng, trxjualdiagnosa, trxjualtotal, trxjual, refjenisbayar RESTART IDENTITY"
 
 echo "Copying from $LAB_USER@$LAB_HOST:$LAB_PORT/$LAB_DB ..."
 copy refjenisbayar "id, info, flag"

@@ -17,6 +17,21 @@ import PasienPage from "./pages/PasienPage";
 import PendaftaranPage from "./pages/PendaftaranPage";
 import PengobatanPage from "./pages/PengobatanPage";
 import PengobatanFormPage from "./pages/PengobatanFormPage";
+import PenjualanObatPage from "./pages/PenjualanObatPage";
+import PenjualanTindakanPage from "./pages/PenjualanTindakanPage";
+import PenjualanPenunjangPage from "./pages/PenjualanPenunjangPage";
+import PenjualanOTCPage from "./pages/PenjualanOTCPage";
+import PasienBaruPage from "./pages/PasienBaruPage";
+import RekapAsuransiPage from "./pages/RekapAsuransiPage";
+import TransaksiHarianPage from "./pages/TransaksiHarianPage";
+import AllStokPage from "./pages/AllStokPage";
+import RujukanPage from "./pages/RujukanPage";
+import ReportPendaftaranPage from "./pages/ReportPendaftaranPage";
+import ReportPendapatanPage from "./pages/ReportPendapatanPage";
+import ReportDiagnosaPage from "./pages/ReportDiagnosaPage";
+import ReportDinkesPage from "./pages/ReportDinkesPage";
+import PenerimaanBarangPage from "./pages/PenerimaanBarangPage";
+import PenerimaanBarangFormPage from "./pages/PenerimaanBarangFormPage";
 import OrganisasiLokasiPage from "./pages/OrganisasiLokasiPage";
 import PerujukOtcPage from "./pages/PerujukOtcPage";
 import PrincipalPage from "./pages/PrincipalPage";
@@ -27,6 +42,26 @@ import RolePage from "./pages/RolePage";
 import TindakanPage from "./pages/TindakanPage";
 import UserPage from "./pages/UserPage";
 import "./styles.css";
+
+// After a deploy, a tab still running the previous build asks for chunk files
+// that no longer exist ("Failed to fetch dynamically imported module"). Reload
+// once to pick up the new build; the guard stops a reload loop.
+window.addEventListener("vite:preloadError", (event) => {
+  let last = 0;
+  try {
+    last = Number(sessionStorage.getItem("chunkReloadAt") ?? 0);
+  } catch {
+    // storage unavailable: still reload once
+  }
+  if (Date.now() - last < 10_000) return;
+  event.preventDefault();
+  try {
+    sessionStorage.setItem("chunkReloadAt", String(Date.now()));
+  } catch {
+    // ignore
+  }
+  window.location.reload();
+});
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -56,6 +91,25 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/front-office-klinik/pendaftaran-pasien" element={<MenuGuard><PendaftaranPage /></MenuGuard>} />
             <Route path="/transaksi-klinik/pengobatan" element={<MenuGuard><PengobatanPage /></MenuGuard>} />
             <Route path="/transaksi-klinik/pengobatan/new" element={<MenuGuard><PengobatanFormPage /></MenuGuard>} />
+            <Route path="/transaksi-klinik/pengobatan/edit/:id" element={<MenuGuard><PengobatanFormPage /></MenuGuard>} />
+            <Route path="/transaksi-klinik/penerimaan-barang" element={<MenuGuard><PenerimaanBarangPage /></MenuGuard>} />
+            <Route path="/transaksi-klinik/penerimaan-barang/new" element={<MenuGuard><PenerimaanBarangFormPage /></MenuGuard>} />
+            <Route path="/transaksi-klinik/penerimaan-barang/view/:id" element={<MenuGuard><PenerimaanBarangFormPage /></MenuGuard>} />
+            <Route path="/report-klinik/raw-data-pengobatan" element={<MenuGuard><PengobatanPage raw /></MenuGuard>} />
+            <Route path="/report-klinik/penjualan-obat" element={<MenuGuard><PenjualanObatPage /></MenuGuard>} />
+            <Route path="/report-klinik/penjualan-tindakan" element={<MenuGuard><PenjualanTindakanPage /></MenuGuard>} />
+            <Route path="/report-klinik/penjualan-penunjang" element={<MenuGuard><PenjualanPenunjangPage /></MenuGuard>} />
+            <Route path="/report-klinik/penjualan-otc" element={<MenuGuard><PenjualanOTCPage /></MenuGuard>} />
+            <Route path="/report-klinik/penjualan-softdrink" element={<MenuGuard><PenjualanOTCPage key="softdrink" softdrink /></MenuGuard>} />
+            <Route path="/report-klinik/pasien-baru" element={<MenuGuard><PasienBaruPage /></MenuGuard>} />
+            <Route path="/report-klinik/rekap-asuransi" element={<MenuGuard><RekapAsuransiPage /></MenuGuard>} />
+            <Route path="/report-klinik/transaksi-harian" element={<MenuGuard><TransaksiHarianPage /></MenuGuard>} />
+            <Route path="/report-klinik/all-stok" element={<MenuGuard><AllStokPage /></MenuGuard>} />
+            <Route path="/report-klinik/rujukan" element={<MenuGuard><RujukanPage /></MenuGuard>} />
+            <Route path="/report-klinik/pendaftaran" element={<MenuGuard><ReportPendaftaranPage /></MenuGuard>} />
+            <Route path="/report-klinik/report-pendapatan" element={<MenuGuard><ReportPendapatanPage /></MenuGuard>} />
+            <Route path="/report-klinik/report-diagnosa" element={<MenuGuard><ReportDiagnosaPage /></MenuGuard>} />
+            <Route path="/report-klinik/report-icd-dinkes" element={<MenuGuard><ReportDinkesPage /></MenuGuard>} />
             <Route path="/master-data-satu-sehat/organisasi-lokasi" element={<MenuGuard><OrganisasiLokasiPage /></MenuGuard>} />
             {/* Routes from the menus table that have no page yet. */}
             <Route path="*" element={<MenuPage />} />

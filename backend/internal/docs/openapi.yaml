@@ -29,6 +29,8 @@ tags:
     description: Front Office Klinik pages; limited to the caller's branches.
   - name: transaksi-klinik
     description: Transaksi Klinik pages; limited to the caller's branches.
+  - name: report-klinik
+    description: Report Klinik pages; limited to the caller's branches.
   - name: system
     description: Operational endpoints
 
@@ -2443,6 +2445,69 @@ paths:
                 example: ok
 
   /api/pengobatan:
+    post:
+      tags: [transaksi-klinik]
+      summary: Save a treatment sale from the Pengobatan form
+      description: >-
+        One transaction. Writes trxjual (no_kwi = YYMM + branch + 4-digit number per
+        branch and month), trxjualtotal (status 1 Close), the lines (trxjualobat,
+        trxjualtindakan, trxjualpnjng, trxjualdiagnosa), lowers trxstock, and sets the
+        registration to CLOSE. Prices come from the master data at the branch; only an
+        editable procedure price (reftindakan.isedit) is taken from the request. Drug
+        lines are rounded up to 500 (PPN 10% for taxable drugs); procedures and
+        examinations are not. pembayaran is the money handed over (default: the amount
+        due), cicilan the settled part, piutang what stays owed.
+      operationId: savePengobatan
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cabang, tglKwi, idKun, idJenisRawat, idJenisBayar, idDokter]
+              properties:
+                cabang: { type: string }
+                tglKwi: { type: string, format: date }
+                idKun: { type: integer, description: trxpendaftaran id }
+                idJenisRawat: { type: integer }
+                idJenisBayar: { type: integer }
+                idDokter: { type: integer }
+                obat: { type: array, items: { type: object, properties: { idObat: { type: integer }, byk: { type: number }, dosis: { type: string, maxLength: 100 } } } }
+                tindakan: { type: array, items: { type: object, properties: { idTindakan: { type: integer }, byk: { type: number }, harga: { type: number, nullable: true } } } }
+                penunjang: { type: array, items: { type: object, properties: { idPenunjang: { type: integer }, byk: { type: number } } } }
+                diagnosa: { type: array, items: { type: integer } }
+                diskon: { type: number }
+                payment: { type: number, nullable: true }
+      responses:
+        '201':
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  noKwi: { type: string, example: 2611CTM0312 }
+                  totObat: { type: number }
+                  totTindakan: { type: number }
+                  totPenunjang: { type: number }
+                  total: { type: number }
+                  potongan: { type: number }
+                  grandTotal: { type: number }
+                  pembayaran: { type: number }
+                  cicilan: { type: number }
+                  piutang: { type: number }
+                  kembalian: { type: number }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: The visit is closed or already billed, or a drug is out of stock
     get:
       tags: [transaksi-klinik]
       summary: List treatment sales (Pengobatan) at your branches, newest first
@@ -2463,7 +2528,7 @@ paths:
         - { name: statusKunjungan, in: query, description: refstatustransaksi id of the linked registration, schema: { type: integer } }
         - { name: pembayaran, in: query, description: refjenisbayar id, schema: { type: integer } }
         - { name: status, in: query, schema: { type: string, enum: [open, close, cancel] } }
-        - { name: sort, in: query, schema: { type: string, enum: [id, tgl, noKwi, pasien, dokter, jenisRawat, pembayaran, total, cabang, status], default: id } }
+        - { name: sort, in: query, schema: { type: string, enum: [id, tgl, noKwi, pasien, dokter, jenisRawat, pembayaran, total, cabang, status, noRm, alamat, kelurahan, tglLahir, jenisKelamin, asuransi, potongan, createUser], default: id } }
         - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
         - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
@@ -2501,6 +2566,14 @@ paths:
                         cancelBy: { type: string }
                         cancelAt: { type: string, nullable: true }
                         cancelReason: { type: string }
+                        alamat: { type: string, description: Patient address (Raw Data Pengobatan) }
+                        rt: { type: string }
+                        rw: { type: string }
+                        kelurahan: { type: string }
+                        tglLahir: { type: string, format: date, nullable: true }
+                        jenisKelamin: { type: string, example: Perempuan }
+                        asuransi: { type: string, description: The sale's insurer, example: NON ASURANSI }
+                        createUser: { type: string, description: Who created the sale (Dibuat Oleh) }
                   total: { type: integer }
                   unfilteredTotal: { type: integer }
                   from: { type: string, format: date }
@@ -2536,6 +2609,1366 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/raw-data-pengobatan:
+    get:
+      tags: [report-klinik]
+      summary: Raw Data Pengobatan, the Pengobatan list with the patient's address, birth date and sex, the insurer and the cashier
+      description: >-
+        Same query, parameters and response as GET /api/pengobatan (alamat, rt, rw, kelurahan,
+        tglLahir, jenisKelamin, asuransi and createUser are filled for every row), guarded by the
+        Report Klinik > Raw Data Pengobatan menu instead of Transaksi Klinik > Pengobatan.
+      operationId: rawDataPengobatan
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: One page of sales, as GET /api/pengobatan
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/raw-data-pengobatan/options:
+    get:
+      tags: [report-klinik]
+      summary: Filter choices for Raw Data Pengobatan, as GET /api/pengobatan/options
+      operationId: rawDataPengobatanOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options, as GET /api/pengobatan/options
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/penjualan-obat:
+    get:
+      tags: [report-klinik]
+      summary: Penjualan Obat, the drugs sold per day at your branches
+      description: >-
+        One row per clinic day, drug, price (trxjualobat.hjual), branch and settlement status, with
+        Banyak summed over the sales and Jumlah = Harga x Banyak. Sorted by drug name, then day.
+        Dates are clinic dates (Asia/Jakarta); both default to today.
+      operationId: penjualanObat
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cabang, in: query, description: One of your branches (403 otherwise), schema: { type: string } }
+        - { name: q, in: query, description: 'Drug, type, unit or branch name', schema: { type: string } }
+        - { name: nama, in: query, description: Drug name (Cari panel), schema: { type: string } }
+        - { name: jenis, in: query, description: refjenisobat id (Cari panel), schema: { type: integer } }
+        - { name: status, in: query, schema: { type: string, enum: [open, close, cancel] } }
+        - { name: sort, in: query, schema: { type: string, enum: [tgl, obat, jenis, satuan, harga, byk, jumlah, cabang, status], default: obat } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: asc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
+      responses:
+        '200':
+          description: One page of grouped rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        tgl: { type: string, format: date }
+                        idObat: { type: integer }
+                        obat: { type: string, example: AKITA TAB }
+                        jenis: { type: string, example: ETIKAL }
+                        satuan: { type: string, example: TABLET }
+                        harga: { type: number, example: 2000 }
+                        byk: { type: number, example: 20 }
+                        jumlah: { type: number, example: 40000 }
+                        cabang: { type: string, example: PRM }
+                        status: { type: string, enum: [open, close, cancel] }
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/penjualan-obat/options:
+    get:
+      tags: [report-klinik]
+      summary: Cari choices for Penjualan Obat (drug types), your branches and today's clinic date
+      operationId: penjualanObatOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jenis: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+                  branches: { type: array, items: { type: object, properties: { kode: { type: string }, nama: { type: string } } } }
+                  today: { type: string, format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/penjualan-tindakan:
+    get:
+      tags: [report-klinik]
+      summary: Penjualan Tindakan, every procedure line sold at your branches with the doctor's fee
+      description: >-
+        One row per procedure line (trxjualtindakan), newest first. Fee Dokter is the branch's fee
+        for the procedure in the master data (reftindakandetail.hbeli; sales do not store it), and
+        totalFee = fee x byk. The doctor is the line's, else the sale's Dokter PJ.
+      operationId: penjualanTindakan
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cabang, in: query, description: One of your branches (403 otherwise), schema: { type: string } }
+        - { name: q, in: query, description: 'Procedure, type, doctor, patient or branch name', schema: { type: string } }
+        - { name: nama, in: query, description: Procedure name (Cari panel), schema: { type: string } }
+        - { name: dokter, in: query, description: Doctor name (Cari panel), schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [open, close, cancel] } }
+        - { name: sort, in: query, schema: { type: string, enum: [tgl, tindakan, jenis, dokter, pasien, fee, harga, byk, totalFee, cabang, status], default: tgl } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
+      responses:
+        '200':
+          description: One page of procedure lines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer, description: trxjualtindakan id }
+                        idJual: { type: integer }
+                        tgl: { type: string, format: date }
+                        tindakan: { type: string }
+                        jenis: { type: string, example: Konsultasi }
+                        dokter: { type: string }
+                        pasien: { type: string }
+                        fee: { type: number, example: 21500 }
+                        harga: { type: number, example: 42500 }
+                        byk: { type: number, example: 1 }
+                        totalFee: { type: number, example: 21500 }
+                        cabang: { type: string }
+                        status: { type: string, enum: [open, close, cancel] }
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/penjualan-tindakan/options:
+    get:
+      tags: [report-klinik]
+      summary: Your branches and today's clinic date, for Penjualan Tindakan
+      operationId: penjualanTindakanOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branches: { type: array, items: { type: object, properties: { kode: { type: string }, nama: { type: string } } } }
+                  today: { type: string, format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/penjualan-penunjang:
+    get:
+      tags: [report-klinik]
+      summary: Penjualan Penunjang, every supporting examination sold at your branches
+      description: >-
+        One row per examination line (trxjualpnjng), newest first, with the patient, the sale's
+        Dokter PJ and who created the sale (Dibuat Oleh).
+      operationId: penjualanPenunjang
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cabang, in: query, description: One of your branches (403 otherwise), schema: { type: string } }
+        - { name: q, in: query, description: 'Examination, type, doctor, patient, No RM, branch or user', schema: { type: string } }
+        - { name: nama, in: query, description: Examination name (Cari panel), schema: { type: string } }
+        - { name: jenis, in: query, description: refjenispanjang id (Cari panel), schema: { type: integer } }
+        - { name: status, in: query, schema: { type: string, enum: [open, close, cancel] } }
+        - { name: sort, in: query, schema: { type: string, enum: [tgl, noRm, pasien, penunjang, jenis, dokter, harga, byk, cabang, status, createUser], default: tgl } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
+      responses:
+        '200':
+          description: One page of examination lines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer, description: trxjualpnjng id }
+                        idJual: { type: integer }
+                        tgl: { type: string, format: date }
+                        noRm: { type: string }
+                        pasien: { type: string }
+                        penunjang: { type: string, example: PROMO 3 IN 1 }
+                        jenis: { type: string, example: LABORATORIUM CV }
+                        dokter: { type: string }
+                        harga: { type: number, example: 49000 }
+                        byk: { type: number, example: 1 }
+                        cabang: { type: string }
+                        status: { type: string, enum: [open, close, cancel] }
+                        createUser: { type: string, example: khoza }
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/penjualan-penunjang/options:
+    get:
+      tags: [report-klinik]
+      summary: Examination types (Cari panel), your branches and today's clinic date, for Penjualan Penunjang
+      operationId: penjualanPenunjangOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jenis: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+                  branches: { type: array, items: { type: object, properties: { kode: { type: string }, nama: { type: string } } } }
+                  today: { type: string, format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/penjualan-otc:
+    get:
+      tags: [report-klinik]
+      summary: Penjualan OTC, every drug line of type OTC sold at your branches
+      description: >-
+        One row per drug line (trxjualobat) whose drug is of type OTC (refjenisobat), newest sale first,
+        with the sale's OTC referrer (refperujukotc via trxjual.id_perujuk_otc). total = harga x byk + ppn.
+      operationId: penjualanOTC
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cabang, in: query, description: One of your branches (403 otherwise), schema: { type: string } }
+        - { name: q, in: query, description: 'Drug, receipt number, referrer, branch or sale id', schema: { type: string } }
+        - { name: nama, in: query, description: Drug name (Cari panel), schema: { type: string } }
+        - { name: perujuk, in: query, description: refperujukotc id (Cari panel), schema: { type: integer } }
+        - { name: status, in: query, schema: { type: string, enum: [open, close, cancel] } }
+        - { name: sort, in: query, schema: { type: string, enum: [idJual, tgl, noKwi, obat, jenis, perujuk, byk, harga, ppn, total, cabang, status], default: idJual } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
+      responses:
+        '200':
+          description: One page of OTC drug lines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer, description: trxjualobat id }
+                        idJual: { type: integer, description: No Trans }
+                        tgl: { type: string, format: date }
+                        noKwi: { type: string }
+                        obat: { type: string }
+                        jenis: { type: string, example: OTC }
+                        perujuk: { type: string, example: DELA }
+                        byk: { type: number }
+                        harga: { type: number }
+                        ppn: { type: number }
+                        total: { type: number }
+                        cabang: { type: string }
+                        status: { type: string, enum: [open, close, cancel] }
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/penjualan-otc/options:
+    get:
+      tags: [report-klinik]
+      summary: OTC referrers (Cari panel), your branches and today's clinic date, for Penjualan OTC
+      operationId: penjualanOTCOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  perujuk: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+                  branches: { type: array, items: { type: object, properties: { kode: { type: string }, nama: { type: string } } } }
+                  today: { type: string, format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/penjualan-softdrink:
+    get:
+      tags: [report-klinik]
+      summary: Penjualan Softdrink, every drug line of type SOFT DRINK sold at your branches
+      description: >-
+        Same query, parameters and response as GET /api/report-klinik/penjualan-otc, for the drugs of
+        type SOFT DRINK (refjenisobat), guarded by the Penjualan Softdrink menu.
+      operationId: penjualanSoftdrink
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: One page of drug lines, as GET /api/report-klinik/penjualan-otc
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/penjualan-softdrink/options:
+    get:
+      tags: [report-klinik]
+      summary: OTC referrers, your branches and today's clinic date, for Penjualan Softdrink
+      operationId: penjualanSoftdrinkOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options, as GET /api/report-klinik/penjualan-otc/options
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/pasien-baru:
+    get:
+      tags: [report-klinik]
+      summary: Pasien Baru, the visits of patients registered in the period at your branches
+      description: >-
+        One row per sale (trxjual) in the period whose patient was registered (refmpasien.create_date)
+        in the same period, newest visit first; a new patient with two sales has two rows. umur is the
+        age in years on the visit day; status is the sale's settlement status.
+      operationId: pasienBaru
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cabang, in: query, description: One of your branches (403 otherwise), schema: { type: string } }
+        - { name: q, in: query, description: 'Patient, No RM, address, birthplace, service, doctor or branch', schema: { type: string } }
+        - { name: nama, in: query, description: Patient name (Cari panel), schema: { type: string } }
+        - { name: pelayanan, in: query, description: refjenisrawat id (Cari panel), schema: { type: integer } }
+        - { name: status, in: query, schema: { type: string, enum: [open, close, cancel] } }
+        - { name: sort, in: query, schema: { type: string, enum: [tgl, noRm, pasien, jenisRawat, tempatLahir, tglLahir, umur, alamat, tglDaftar, dokter, status, cabang], default: tgl } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
+      responses:
+        '200':
+          description: One page of visits
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        idJual: { type: integer }
+                        tgl: { type: string, example: '2026-11-19 23:41:05', description: Tanggal Kunjungan }
+                        noRm: { type: string }
+                        pasien: { type: string }
+                        jenisRawat: { type: string }
+                        tempatLahir: { type: string }
+                        tglLahir: { type: string, format: date, nullable: true }
+                        umur: { type: integer, nullable: true }
+                        alamat: { type: string }
+                        tglDaftar: { type: string, format: date }
+                        dokter: { type: string }
+                        status: { type: string, enum: [open, close, cancel] }
+                        cabang: { type: string }
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/pasien-baru/options:
+    get:
+      tags: [report-klinik]
+      summary: Services (Cari panel), your branches and today's clinic date, for Pasien Baru
+      operationId: pasienBaruOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pelayanan: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+                  branches: { type: array, items: { type: object, properties: { kode: { type: string }, nama: { type: string } } } }
+                  today: { type: string, format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/rekap-asuransi:
+    get:
+      tags: [report-klinik]
+      summary: Rekap Asuransi, the insured sales at your branches with their items
+      description: >-
+        One entry per sale whose insurer (trxjual.id_jamkes) is not NON ASURANSI, newest first, with
+        its drug, procedure and examination items (jumlah = harga x byk), its diagnoses (ICD names)
+        and total (trxjualtotal.total). Paging counts sales, not item rows.
+      operationId: rekapAsuransi
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cabang, in: query, description: One of your branches (403 otherwise), schema: { type: string } }
+        - { name: q, in: query, description: 'Patient, No RM, card number, insurer, doctor or branch', schema: { type: string } }
+        - { name: nama, in: query, description: Patient name (Cari panel), schema: { type: string } }
+        - { name: asuransi, in: query, description: refjaminankesehatan id (Cari panel), schema: { type: integer } }
+        - { name: status, in: query, schema: { type: string, enum: [open, close, cancel] } }
+        - { name: sort, in: query, schema: { type: string, enum: [tgl, noRm, noKartu, perusahaan, pasien, dokter, total, cabang, status], default: tgl } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, description: Sales per page, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
+      responses:
+        '200':
+          description: One page of insured sales
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        idJual: { type: integer }
+                        tgl: { type: string, format: date }
+                        noRm: { type: string }
+                        noKartu: { type: string, description: Card Number }
+                        perusahaan: { type: string, example: GARDA MEDIKA }
+                        pasien: { type: string }
+                        dokter: { type: string }
+                        diagnosa: { type: array, items: { type: string } }
+                        obat: { type: array, items: { type: object, properties: { nama: { type: string }, byk: { type: number }, harga: { type: number }, jumlah: { type: number } } } }
+                        tindakan: { type: array, items: { type: object, properties: { nama: { type: string }, byk: { type: number }, harga: { type: number }, jumlah: { type: number } } } }
+                        penunjang: { type: array, items: { type: object, properties: { nama: { type: string }, byk: { type: number }, harga: { type: number }, jumlah: { type: number } } } }
+                        total: { type: number }
+                        cabang: { type: string }
+                        status: { type: string, enum: [open, close, cancel] }
+                  total: { type: integer, description: Number of sales }
+                  unfilteredTotal: { type: integer }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/rekap-asuransi/options:
+    get:
+      tags: [report-klinik]
+      summary: Insurers other than NON ASURANSI (Cari panel), your branches and today's clinic date, for Rekap Asuransi
+      operationId: rekapAsuransiOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asuransi: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+                  branches: { type: array, items: { type: object, properties: { kode: { type: string }, nama: { type: string } } } }
+                  today: { type: string, format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/transaksi-harian:
+    get:
+      tags: [report-klinik]
+      summary: Transaksi Harian, every sale at your branches with its cost per group
+      description: >-
+        One row per sale, newest first, with Obat, Tindakan and Penunjang (trxjualtotal.tot_obat,
+        tot_tndk, tot_pnjng), Total and Diskon (potongan).
+      operationId: transaksiHarian
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cabang, in: query, description: One of your branches (403 otherwise), schema: { type: string } }
+        - { name: pelayanan, in: query, description: refjenisrawat id (Pelayanan, in the toolbar), schema: { type: integer } }
+        - { name: q, in: query, description: 'Patient, No RM, service, doctor, payment or branch', schema: { type: string } }
+        - { name: nama, in: query, description: Patient name (Cari panel), schema: { type: string } }
+        - { name: pembayaran, in: query, description: refjenisbayar id (Cari panel), schema: { type: integer } }
+        - { name: status, in: query, schema: { type: string, enum: [open, close, cancel] } }
+        - { name: sort, in: query, schema: { type: string, enum: [tgl, noRm, pasien, pelayanan, dokter, pembayaran, obat, tindakan, penunjang, total, cabang, status, diskon], default: tgl } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
+      responses:
+        '200':
+          description: One page of sales
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        idJual: { type: integer }
+                        tgl: { type: string, format: date }
+                        noRm: { type: string }
+                        pasien: { type: string }
+                        pelayanan: { type: string }
+                        dokter: { type: string }
+                        pembayaran: { type: string }
+                        obat: { type: number }
+                        tindakan: { type: number }
+                        penunjang: { type: number }
+                        total: { type: number }
+                        cabang: { type: string }
+                        status: { type: string, enum: [open, close, cancel] }
+                        diskon: { type: number }
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/transaksi-harian/options:
+    get:
+      tags: [report-klinik]
+      summary: Services, payment types, your branches and today's clinic date, for Transaksi Harian
+      operationId: transaksiHarianOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pelayanan: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+                  pembayaran: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+                  branches: { type: array, items: { type: object, properties: { kode: { type: string }, nama: { type: string } } } }
+                  today: { type: string, format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/all-stok:
+    get:
+      tags: [report-klinik]
+      summary: All Stok, every drug at your branches with its stock movement over the period
+      description: >-
+        One row per stock row (trxstock: drug and branch), the dearest first. The app changes stock
+        only through sales (Save takes drugs out, Cancel puts them back), so stokAkhir = current stock +
+        the drugs sold after the period, jual = the drugs sold in the period (cancelled sales left out)
+        and stokAwal = stokAkhir + jual. Prices are the branch's (trxstock.hbeli, hjual).
+      operationId: allStok
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cabang, in: query, description: One of your branches (403 otherwise), schema: { type: string } }
+        - { name: q, in: query, description: 'Drug, type, principal, distributor, branch or drug id', schema: { type: string } }
+        - { name: nama, in: query, description: Drug name (Cari panel), schema: { type: string } }
+        - { name: jenis, in: query, description: refjenisobat id (Cari panel), schema: { type: integer } }
+        - { name: movingPo, in: query, description: refkodemovingpo id (Cari panel), schema: { type: integer } }
+        - { name: sort, in: query, schema: { type: string, enum: [idObat, obat, satuanBeli, isiPerBox, satuanJual, hargaBeli, hargaJual, jenis, principal, distributor, movingPo, stokAwal, jual, stokAkhir, cabang], default: hargaJual } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
+      responses:
+        '200':
+          description: One page of stock rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        idObat: { type: integer, description: Kode }
+                        obat: { type: string }
+                        satuanBeli: { type: string }
+                        isiPerBox: { type: string, description: refobat.isi_per_box (text) }
+                        satuanJual: { type: string }
+                        hargaBeli: { type: number }
+                        hargaJual: { type: number }
+                        jenis: { type: string }
+                        principal: { type: string }
+                        distributor: { type: string }
+                        movingPo: { type: string, example: SM }
+                        stokAwal: { type: number }
+                        jual: { type: number }
+                        stokAkhir: { type: number }
+                        cabang: { type: string }
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/all-stok/options:
+    get:
+      tags: [report-klinik]
+      summary: Drug types, PO moving codes, your branches and today's clinic date, for All Stok
+      operationId: allStokOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jenis: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+                  movingPo: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+                  branches: { type: array, items: { type: object, properties: { kode: { type: string }, nama: { type: string } } } }
+                  today: { type: string, format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/rujukan:
+    get:
+      tags: [report-klinik]
+      summary: Rujukan, the sales of external doctors at your branches
+      description: >-
+        One row per supporting examination (trxjualpnjng) of a sale whose Dokter PJ is an external
+        doctor (refmdokter.id_internal = 3, EKSTERNAL in refdokterinternal), newest first; total is the
+        examination's harga x byk. A sale without examinations has one row with idLine null, no
+        penunjang and total 0.
+      operationId: rujukan
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cabang, in: query, description: One of your branches (403 otherwise), schema: { type: string } }
+        - { name: q, in: query, description: 'Patient, No RM, doctor, service, examination or branch', schema: { type: string } }
+        - { name: nama, in: query, description: Patient name (Cari panel), schema: { type: string } }
+        - { name: dokter, in: query, description: Doctor name (Cari panel), schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [open, close, cancel] } }
+        - { name: sort, in: query, schema: { type: string, enum: [tgl, noRm, pasien, dokter, jenisRawat, penunjang, total, cabang, status], default: tgl } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 20 } }
+      responses:
+        '200':
+          description: One page of rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        idJual: { type: integer }
+                        idLine: { type: integer, nullable: true, description: trxjualpnjng id }
+                        tgl: { type: string, format: date }
+                        noRm: { type: string }
+                        pasien: { type: string }
+                        dokter: { type: string, description: Dokter Eksternal }
+                        jenisRawat: { type: string }
+                        penunjang: { type: string }
+                        total: { type: number }
+                        cabang: { type: string }
+                        status: { type: string, enum: [open, close, cancel] }
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/rujukan/options:
+    get:
+      tags: [report-klinik]
+      summary: Your branches and today's clinic date, for Rujukan
+      operationId: rujukanOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branches: { type: array, items: { type: object, properties: { kode: { type: string }, nama: { type: string } } } }
+                  today: { type: string, format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/pendaftaran:
+    get:
+      tags: [report-klinik]
+      summary: Pendaftaran, the registrations at your branches
+      description: >-
+        One row per registration (trxpendaftaran), newest first, with its queue number, service,
+        visit status (refstatustransaksi) and patient; umur is the age in years on the registration day.
+      operationId: reportPendaftaran
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cabang, in: query, description: One of your branches (403 otherwise), schema: { type: string } }
+        - { name: q, in: query, description: 'Patient, No RM, address, service, visit status, branch or registration number', schema: { type: string } }
+        - { name: nama, in: query, description: Patient name (Cari panel), schema: { type: string } }
+        - { name: pelayanan, in: query, description: refjenisrawat id (Cari panel), schema: { type: integer } }
+        - { name: statusKunjungan, in: query, description: refstatustransaksi id (Cari panel), schema: { type: integer } }
+        - { name: sort, in: query, schema: { type: string, enum: [id, noAntri, tgl, pelayanan, statusKun, noRm, pasien, umur, alamat, cabang], default: id } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
+      responses:
+        '200':
+          description: One page of registrations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer, description: No Pendaftaran }
+                        noAntri: { type: integer, nullable: true }
+                        tgl: { type: string, nullable: true, example: '2026-11-20 14:24:58' }
+                        pelayanan: { type: string }
+                        statusKun: { type: string, example: CLOSE }
+                        noRm: { type: string }
+                        pasien: { type: string }
+                        umur: { type: integer, nullable: true }
+                        alamat: { type: string }
+                        cabang: { type: string }
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/pendaftaran/options:
+    get:
+      tags: [report-klinik]
+      summary: Services, visit statuses, your branches and today's clinic date, for the Pendaftaran report
+      operationId: reportPendaftaranOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pelayanan: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+                  statusKunjungan: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+                  branches: { type: array, items: { type: object, properties: { kode: { type: string }, nama: { type: string } } } }
+                  today: { type: string, format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/pendapatan:
+    get:
+      tags: [report-klinik]
+      summary: Report Pendapatan, one branch's sales in a period for the "Laporan Pendapatan Klinik" PDF
+      description: >-
+        The sales of one of your branches in the period, oldest first, cancelled sales left out (they
+        are no income), with each sale's cost per group, total and discount, and whether its patient was
+        registered in the period (Pasien Baru). Also returns the branch name and phone for the PDF header,
+        today's clinic date (Tanggal Posting) and the caller as Petugas (the e-mail without its domain).
+      operationId: reportPendapatan
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: cabang, in: query, required: true, description: One of your branches (400 when missing, 403 otherwise), schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: pelayanan, in: query, description: refjenisrawat id (Layanan); all when omitted, schema: { type: integer } }
+        - { name: dokter, in: query, description: refmdokter id (the sale's Dokter PJ); all when omitted, schema: { type: integer } }
+      responses:
+        '200':
+          description: The report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cabang: { type: string }
+                  namaCabang: { type: string }
+                  telpCabang: { type: string }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+                  today: { type: string, format: date }
+                  petugas: { type: string }
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        idJual: { type: integer }
+                        tgl: { type: string, example: '2026-11-19 00:13:04.517' }
+                        noKwi: { type: string }
+                        pasien: { type: string }
+                        obat: { type: number }
+                        tindakan: { type: number }
+                        penunjang: { type: number }
+                        total: { type: number }
+                        potongan: { type: number }
+                        baru: { type: boolean, description: The patient was registered in the period }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/pendapatan/options:
+    get:
+      tags: [report-klinik]
+      summary: Services (Layanan), your branches and today's clinic date, for Report Pendapatan
+      operationId: reportPendapatanOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pelayanan: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+                  branches: { type: array, items: { type: object, properties: { kode: { type: string }, nama: { type: string } } } }
+                  today: { type: string, format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/pendapatan/dokter:
+    get:
+      tags: [report-klinik]
+      summary: The doctors practising at one of your branches (refmdokterauth), for the Dokter dropdown
+      operationId: reportPendapatanDokter
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: cabang, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Doctors by id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/diagnosa:
+    get:
+      tags: [report-klinik]
+      summary: Report Diagnosa, every diagnosis of the sales at your branches
+      description: >-
+        One row per diagnosis (trxjualdiagnosa), newest sale first, with the patient, the sale's
+        prescription ("DRUG (qty) , DRUG (qty)") and the visit's main complaint
+        (trxpemeriksaan.keluhan_utama); usia is the age in years on the visit day. A sale with two
+        diagnoses has two rows. The legacy Saturasi Oksigen is not stored in this database.
+      operationId: reportDiagnosa
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cabang, in: query, description: One of your branches (403 otherwise), schema: { type: string } }
+        - { name: q, in: query, description: 'Patient, No RM, ICD code or name, doctor, complaint, branch or sale id', schema: { type: string } }
+        - { name: nama, in: query, description: Patient name (Cari panel), schema: { type: string } }
+        - { name: diagnosa, in: query, description: ICD code or name (Cari panel), schema: { type: string } }
+        - { name: pelayanan, in: query, description: refjenisrawat id (Cari panel), schema: { type: integer } }
+        - { name: sort, in: query, schema: { type: string, enum: [idJual, tgl, noRm, pasien, tglLahir, usia, jenisKelamin, dokter, jenisRawat, icd, diagnosa, cabang], default: idJual } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 5 } }
+      responses:
+        '200':
+          description: One page of diagnoses
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer, description: trxjualdiagnosa id }
+                        idJual: { type: integer }
+                        tgl: { type: string, example: '2026-11-20 14:30:38' }
+                        noRm: { type: string }
+                        pasien: { type: string }
+                        tglLahir: { type: string, format: date, nullable: true }
+                        usia: { type: integer, nullable: true }
+                        jenisKelamin: { type: string }
+                        dokter: { type: string }
+                        jenisRawat: { type: string }
+                        icd: { type: string, example: J06 }
+                        diagnosa: { type: string }
+                        resep: { type: string }
+                        keluhan: { type: string }
+                        cabang: { type: string }
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/diagnosa/options:
+    get:
+      tags: [report-klinik]
+      summary: Services, your branches and today's clinic date, for Report Diagnosa
+      operationId: reportDiagnosaOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options, as GET /api/report-klinik/pendapatan/options
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/icd-dinkes:
+    get:
+      tags: [report-klinik]
+      summary: Report ICD Dinkes, the cases per ICD code and service at your branches, by age group and sex
+      description: >-
+        One row per ICD code and service (refjenisrawat): the diagnoses (trxjualdiagnosa) of the
+        non-cancelled sales in the period, counted by the patient's age on the visit day (0-7 days,
+        8-28 days, 1-11 months, 1-4, 5-9, 10-14, 15-19, 20-44, 45-59 and over 59 years) and by sex
+        (refgender 1 Laki-laki, 2 Perempuan). A patient without a birth date is in no age group but in
+        the total. Highest code first.
+      operationId: reportIcdDinkes
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cabang, in: query, description: One of your branches (403 otherwise); all of them when omitted, schema: { type: string } }
+        - { name: q, in: query, description: 'ICD code or name, or service', schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, enum: [kode, icd, jenisRawat, hari0_7, hari8_28, bulan1_11, tahun1_4, tahun5_9, tahun10_14, tahun15_19, tahun20_44, tahun45_59, tahun60, laki, perempuan, total], default: kode } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
+      responses:
+        '200':
+          description: One page of ICD lines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kode: { type: string, example: R51 }
+                        icd: { type: string, example: HEADACHE (CEPHALGIA) }
+                        jenisRawat: { type: string, example: POLI UMUM }
+                        hari0_7: { type: integer }
+                        hari8_28: { type: integer }
+                        bulan1_11: { type: integer }
+                        tahun1_4: { type: integer }
+                        tahun5_9: { type: integer }
+                        tahun10_14: { type: integer }
+                        tahun15_19: { type: integer }
+                        tahun20_44: { type: integer }
+                        tahun45_59: { type: integer }
+                        tahun60: { type: integer, description: Over 59 years }
+                        laki: { type: integer }
+                        perempuan: { type: integer }
+                        total: { type: integer }
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/report-klinik/icd-dinkes/options:
+    get:
+      tags: [report-klinik]
+      summary: Your branches and today's clinic date, for Report ICD Dinkes
+      operationId: reportIcdDinkesOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branches: { type: array, items: { type: object, properties: { kode: { type: string }, nama: { type: string } } } }
+                  today: { type: string, format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/penerimaan-barang:
+    get:
+      tags: [transaksi-klinik]
+      summary: List goods receipts (Penerimaan Barang) at your branches, newest first
+      description: >-
+        One row per receipt (trxfaktur): No GR is no_fak, Tgl Trans the entry date (tgl), Tgl GR the
+        receipt date (tgl_fak); supplier is empty when id_supp is 0; total from trxfakturtotal. The
+        dates filter the entry date (clinic dates, default today).
+      operationId: listPenerimaanBarang
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cabang, in: query, description: One of your branches (403 otherwise), schema: { type: string } }
+        - { name: q, in: query, description: 'No GR, supplier, branch or receipt number', schema: { type: string } }
+        - { name: noGr, in: query, description: No GR (Cari panel), schema: { type: string } }
+        - { name: supplier, in: query, description: refsupplier id (Cari panel); 0 = no supplier, schema: { type: integer } }
+        - { name: sort, in: query, schema: { type: string, enum: [id, noGr, tglTrans, tglGr, supplier, total, cabang], default: id } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 10 } }
+      responses:
+        '200':
+          description: One page of receipts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer, description: No }
+                        noGr: { type: string, example: PM/11/20/2026 }
+                        tglTrans: { type: string, format: date, nullable: true }
+                        tglGr: { type: string, format: date, nullable: true }
+                        supplier: { type: string, description: Empty when none }
+                        total: { type: number }
+                        cabang: { type: string }
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [transaksi-klinik]
+      summary: Save a goods receipt and add its drugs to the branch stock
+      description: >-
+        Records trxfaktur (tgl now, tgl_fak and tgl_jtp = tglGr, id_supp 0, id_jenis_byr 1), one
+        trxfakturobat line per drug with the branch's buying price (trxstock.hbeli) and tot_qjb = byk,
+        and trxfakturtotal (total = sum of hbeli x byk x (1 - disc/100), fully paid, status 1,
+        no_close = YYMM + id); then adds each byk to the branch stock (trxstock.stok). All in one
+        transaction. noBatch defaults to "0".
+      operationId: savePenerimaanBarang
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cabang, idDistributor, noGr, tglGr, obat]
+              properties:
+                cabang: { type: string, description: One of your branches (403 otherwise) }
+                idDistributor: { type: integer, description: refdistributorobat id }
+                noGr: { type: string, maxLength: 15 }
+                tglGr: { type: string, format: date, description: Not after today }
+                obat:
+                  type: array
+                  minItems: 1
+                  maxItems: 300
+                  items:
+                    type: object
+                    required: [idObat, byk, tglExp]
+                    properties:
+                      idObat: { type: integer, description: A drug stocked at the branch }
+                      noBatch: { type: string, maxLength: 20 }
+                      byk: { type: number, exclusiveMinimum: 0 }
+                      tglExp: { type: string, format: date }
+                      disc: { type: number, minimum: 0, maximum: 100, description: Percent }
+      responses:
+        '201':
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer, description: No Trans }
+                  total: { type: number }
+                  noClose: { type: integer, nullable: true }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/penerimaan-barang/options:
+    get:
+      tags: [transaksi-klinik]
+      summary: Suppliers, your branches and today's clinic date, for Penerimaan Barang
+      operationId: penerimaanBarangOptions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suppliers: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+                  branches: { type: array, items: { type: object, properties: { kode: { type: string }, nama: { type: string } } } }
+                  today: { type: string, format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/penerimaan-barang/distributor:
+    get:
+      tags: [transaksi-klinik]
+      summary: Distributors (refdistributorobat) for the receipt form's lookup
+      operationId: penerimaanBarangDistributor
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Distributors by id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows: { type: array, items: { type: object, properties: { id: { type: integer }, nama: { type: string }, alamat: { type: string } } } }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/penerimaan-barang/obat:
+    get:
+      tags: [transaksi-klinik]
+      summary: The drugs stocked at one of your branches, with buying price and stock, for the receipt form's lookup
+      operationId: penerimaanBarangObat
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: cabang, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Drugs by id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        nama: { type: string }
+                        jenis: { type: string }
+                        satuan: { type: string, description: The selling unit }
+                        harga: { type: number, description: trxstock.hbeli }
+                        stok: { type: number }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/penerimaan-barang/detail/{id}:
+    parameters:
+      - { name: id, in: path, required: true, description: trxfaktur id (No Trans), schema: { type: integer } }
+    get:
+      tags: [transaksi-klinik]
+      summary: A saved goods receipt with its lines, for the read-only View page
+      operationId: penerimaanBarangDetail
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The receipt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  noGr: { type: string }
+                  tglTrans: { type: string, nullable: true }
+                  tglGr: { type: string, format: date, nullable: true }
+                  cabang: { type: string }
+                  idDistributor: { type: integer, nullable: true }
+                  distributor: { type: string }
+                  supplier: { type: string }
+                  createUser: { type: string }
+                  total: { type: number }
+                  obat:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        idObat: { type: integer }
+                        nama: { type: string }
+                        jenis: { type: string }
+                        satuan: { type: string }
+                        harga: { type: number }
+                        noBatch: { type: string }
+                        byk: { type: number }
+                        tglExp: { type: string, format: date, nullable: true }
+                        disc: { type: number }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/pengobatan/pendaftaran:
     get:
       tags: [transaksi-klinik]
@@ -2674,6 +4107,376 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/me/branches:
+    get:
+      tags: [user]
+      summary: The branches you are mapped to (refbranchauth)
+      description: Shown on the home page. Needs a login but no menu, because it only lists your own mapping.
+      operationId: myBranches
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Your branches, by code; empty when you are mapped to none
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branches:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kode: { type: string, example: CTM }
+                        nama: { type: string, example: KLINIK CITRA MEDIKA }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/pengobatan/tindakan:
+    get:
+      tags: [transaksi-klinik]
+      summary: The Dokter PJ's procedures offered at one of your branches (the form's Data Tindakan Dokter lookup)
+      description: >-
+        Procedures the doctor performs (trxtindakan) that are active and offered at
+        the branch, with the branch price (reftindakandetail.hjual). isEdit means the
+        price may be changed in the form. Procedure totals are not rounded.
+      operationId: pengobatanTindakan
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: cabang, in: query, required: true, description: One of your branches (403 otherwise), schema: { type: string } }
+        - { name: dokter, in: query, required: true, description: refmdokter id of the Dokter PJ, schema: { type: integer } }
+      responses:
+        '200':
+          description: Procedures
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        nama: { type: string }
+                        jenis: { type: string }
+                        harga: { type: number }
+                        isEdit: { type: boolean }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/pengobatan/penunjang:
+    get:
+      tags: [transaksi-klinik]
+      summary: Supporting examinations offered at one of your branches (the Penunjang tab's lookup)
+      description: >-
+        refpenunjang rows that are active and offered at the branch, with the branch
+        price (refpenunjangdetail.hjual). Examination totals are not rounded.
+      operationId: pengobatanPenunjang
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: cabang, in: query, required: true, description: One of your branches (403 otherwise), schema: { type: string } }
+      responses:
+        '200':
+          description: Examinations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        nama: { type: string }
+                        jenis: { type: string }
+                        harga: { type: number }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/pengobatan/icd:
+    get:
+      tags: [transaksi-klinik]
+      summary: ICD-X codes for the Diagnosa tab's lookup (Data Diagnosa), paged on the server
+      description: Same data as /api/icd, but needs only the Pengobatan menu. Codes are not per branch.
+      operationId: pengobatanIcd
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: q, in: query, description: 'Code, disease name or type', schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, enum: [id, kode, nama, jenis], default: id } }
+        - { name: dir, in: query, schema: { type: string, enum: [asc, desc], default: asc } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 10 } }
+      responses:
+        '200':
+          description: One page of codes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        kode: { type: string, example: K04.3 }
+                        nama: { type: string }
+                        idJenis: { type: integer }
+                        jenis: { type: string, example: GIGI }
+                  total: { type: integer }
+                  unfilteredTotal: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/pengobatan/pemeriksaan/{idKun}:
+    parameters:
+      - { name: idKun, in: path, required: true, description: trxpendaftaran id, schema: { type: integer } }
+    get:
+      tags: [transaksi-klinik]
+      summary: The examination of a registration at your branches (trxpemeriksaan)
+      description: pemeriksaan is null when none is saved yet. Another branch's registration answers 404.
+      operationId: getPemeriksaan
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Examination, with dokter, updatedBy and updatedAt
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [transaksi-klinik]
+      summary: Save the examination of a registration at your branches (insert or update trxpemeriksaan)
+      description: One row per registration. Only while the visit is DAFTAR, PROSES or PAYMENT (409 otherwise).
+      operationId: savePemeriksaan
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+                properties:
+                  keluhanUtama: { type: string, maxLength: 300 }
+                  anamnesis: { type: string, maxLength: 300 }
+                  sistole: { type: integer, nullable: true, minimum: 0, maximum: 300 }
+                  diastole: { type: integer, nullable: true, minimum: 0, maximum: 250 }
+                  beratBadan: { type: integer, nullable: true, minimum: 0, maximum: 500, description: kg }
+                  tinggiBadan: { type: integer, nullable: true, minimum: 0, maximum: 300, description: cm }
+                  suhu: { type: number, nullable: true, minimum: 25, maximum: 45, description: '°C' }
+                  pemeriksaanFisik: { type: string, maxLength: 300 }
+                  rekapHasilPenunjang: { type: string, maxLength: 300 }
+                  hasilPenunjang: { type: string, maxLength: 300 }
+                  rencanaPenatalaksanaan: { type: string, maxLength: 300 }
+                  hasilPemeriksaanDokter: { type: string, maxLength: 400 }
+                  tindakanDokter: { type: string, maxLength: 400 }
+                  idDokter: { type: integer, nullable: true, description: Dokter PJ (refmdokter) }
+      responses:
+        '200':
+          description: Saved; the stored examination
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The visit is closed or cancelled
+  /api/pengobatan/kuitansi/{id}:
+    parameters:
+      - { name: id, in: path, required: true, description: trxjual id, schema: { type: integer } }
+    get:
+      tags: [transaksi-klinik]
+      summary: The receipt (kwitansi) data of a sale at your branches
+      operationId: pengobatanKuitansi
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Receipt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  noKwi: { type: string }
+                  tglKwi: { type: string, format: date }
+                  cabang: { type: string }
+                  namaCabang: { type: string }
+                  noRm: { type: string }
+                  pasien: { type: string }
+                  biayaObat: { type: number }
+                  biayaTindakan: { type: number }
+                  biayaPenunjang: { type: number }
+                  potongan: { type: number }
+                  jumlah: { type: number, description: total minus discount }
+                  noCetak: { type: string, description: 'empty until the first print' }
+                  printedBy: { type: string }
+                  printedAt: { type: string, nullable: true }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/pengobatan/kuitansi/{id}/cetak:
+    parameters:
+      - { name: id, in: path, required: true, description: trxjual id, schema: { type: integer } }
+    post:
+      tags: [transaksi-klinik]
+      summary: Record a receipt print
+      description: >-
+        The first print writes trxjualcetak with no_cetak = <refbranch.kode_kwt>-YY-MM-<5 digits>,
+        numbered per code and month; reprints keep it. Returns the receipt plus printedNow
+        and printedUser for the printed page.
+      operationId: pengobatanCetak
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Receipt with its print number
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/pengobatan/nota/{id}:
+    parameters:
+      - { name: id, in: path, required: true, description: trxjual id, schema: { type: integer } }
+    get:
+      tags: [transaksi-klinik]
+      summary: A sale with its lines, for the Print menu (A5 Reguler, A5 Bold, Thermal, A5 Summary)
+      operationId: pengobatanNota
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The sale header, lines, diagnoses and payment
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  noKwi: { type: string }
+                  tgl: { type: string, nullable: true }
+                  namaCabang: { type: string }
+                  alamatCabang: { type: string }
+                  telpCabang: { type: string }
+                  namaPt: { type: string, description: company the branch is registered under }
+                  noCetak: { type: string, description: print number assigned at the first print }
+                  noRm: { type: string }
+                  pasien: { type: string }
+                  penanggung: { type: string }
+                  point: { type: number, description: "the patient's points balance" }
+                  dokter: { type: string }
+                  pelayanan: { type: string }
+                  jenisBayar: { type: string }
+                  kasir: { type: string }
+                  obat: { type: array, items: { type: object, properties: { nama: { type: string }, satuan: { type: string }, byk: { type: number }, harga: { type: number }, jumlah: { type: number }, ppn: { type: number }, dosis: { type: string } } } }
+                  tindakan: { type: array, items: { type: object, properties: { nama: { type: string }, satuan: { type: string }, byk: { type: number }, harga: { type: number }, jumlah: { type: number }, ppn: { type: number }, dosis: { type: string } } } }
+                  penunjang: { type: array, items: { type: object, properties: { nama: { type: string }, satuan: { type: string }, byk: { type: number }, harga: { type: number }, jumlah: { type: number }, ppn: { type: number }, dosis: { type: string } } } }
+                  diagnosa: { type: array, items: { type: string } }
+                  totObat: { type: number }
+                  totTindakan: { type: number }
+                  totPenunjang: { type: number }
+                  total: { type: number }
+                  potongan: { type: number }
+                  grandTotal: { type: number }
+                  pembayaran: { type: number }
+                  piutang: { type: number }
+                  kembalian: { type: number }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/pengobatan/detail/{id}:
+    parameters:
+      - { name: id, in: path, required: true, description: trxjual id, schema: { type: integer } }
+    get:
+      tags: [transaksi-klinik]
+      summary: A saved sale for the Edit page (registration, patient, lines, payment, cancel info)
+      operationId: pengobatanDetail
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The sale
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PengobatanDetail' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/pengobatan/detail/{id}/cancel:
+    parameters:
+      - { name: id, in: path, required: true, description: trxjual id, schema: { type: integer } }
+    post:
+      tags: [transaksi-klinik]
+      summary: Cancel a sale ("Cancel Pengobatan")
+      description: >-
+        Sets trxjualtotal.status to 2 with cancelby (the e-mail without its domain), cancelat and
+        cancelreason. Amounts and lines are kept and the registration stays CLOSE. The drugs sold
+        go back into the branch stock.
+      operationId: pengobatanCancel
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [alasan]
+              properties:
+                alasan: { type: string, maxLength: 100, example: SALAH INPUT }
+      responses:
+        '200':
+          description: The cancelled sale
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PengobatanDetail' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The sale is already cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 components:
   securitySchemes:
     bearerAuth:
@@ -2741,6 +4544,45 @@ components:
             error: internal server error
 
   schemas:
+    PengobatanDetail:
+      type: object
+      properties:
+        id: { type: integer }
+        noKwi: { type: string }
+        tglKwi: { type: string, format: date, nullable: true }
+        cabang: { type: string }
+        idJenisRawat: { type: integer, nullable: true }
+        idJenisBayar: { type: integer, nullable: true }
+        idDokter: { type: integer, nullable: true }
+        dokter: { type: string }
+        status: { type: string, enum: [open, close, cancel] }
+        cancelBy: { type: string }
+        cancelAt: { type: string, nullable: true }
+        cancelReason: { type: string }
+        reg: { type: object, nullable: true, description: the registration with its patient (same fields as the registration lookup) }
+        obat: { type: array, items: { type: object, properties: { idObat: { type: integer }, nama: { type: string }, jenis: { type: string }, satuan: { type: string }, harga: { type: number }, byk: { type: number }, kenaPajak: { type: boolean }, ppn: { type: number }, dosis: { type: string } } } }
+        tindakan: { type: array, items: { $ref: '#/components/schemas/PengobatanDetailLine' } }
+        penunjang: { type: array, items: { $ref: '#/components/schemas/PengobatanDetailLine' } }
+        diagnosa: { type: array, items: { type: object, properties: { id: { type: integer }, kode: { type: string }, nama: { type: string }, jenis: { type: string } } } }
+        totObat: { type: number }
+        totTindakan: { type: number }
+        totPenunjang: { type: number }
+        total: { type: number }
+        potongan: { type: number }
+        grandTotal: { type: number }
+        pembayaran: { type: number }
+        piutang: { type: number }
+        kembalian: { type: number }
+    PengobatanDetailLine:
+      type: object
+      properties:
+        id: { type: integer }
+        nama: { type: string }
+        jenis: { type: string }
+        dokter: { type: string }
+        harga: { type: number }
+        byk: { type: number }
+        isEdit: { type: boolean }
     RegisterRequest:
       type: object
       required: [email, password, confirmPassword]

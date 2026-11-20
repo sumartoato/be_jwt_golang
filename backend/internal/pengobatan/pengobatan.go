@@ -1,6 +1,8 @@
 // Package pengobatan serves Transaksi Klinik > Pengobatan: the list of treatment
 // sales (trxjual) with their totals and settlement status (trxjualtotal). A user
 // only sees the sales of the branches they are mapped to (refbranchauth).
+// Report Klinik > Raw Data Pengobatan is the same list with the patient's
+// address, birth date and sex, the insurer and the cashier.
 //
 // It replaces the legacy spVTrxJualByPeriodeAuth8 procedure and its
 // VTrxJualWithAddress view with one parameterized query that joins only what
@@ -16,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/example/be_jwt_golang/backend/internal/branchauth"
+	"github.com/example/be_jwt_golang/backend/internal/icd"
 )
 
 // Settlement statuses (trxjualtotal.status), shown as Status.
@@ -48,6 +51,15 @@ type Row struct {
 	CancelBy       string  `json:"cancelBy"`
 	CancelAt       *string `json:"cancelAt"`
 	CancelReason   string  `json:"cancelReason"`
+	// Raw Data Pengobatan columns.
+	Alamat       string  `json:"alamat"`
+	RT           string  `json:"rt"`
+	RW           string  `json:"rw"`
+	Kelurahan    string  `json:"kelurahan"`
+	TglLahir     *string `json:"tglLahir"` // YYYY-MM-DD
+	JenisKelamin string  `json:"jenisKelamin"`
+	Asuransi     string  `json:"asuransi"` // the sale's insurer (trxjual.id_jamkes)
+	CreateUser   string  `json:"createUser"`
 }
 
 const statusSQL = `CASE t.status WHEN 1 THEN 'close' WHEN 2 THEN 'cancel' ELSE 'open' END`
@@ -64,6 +76,15 @@ var sortColumns = map[string]string{
 	"total":      "t.total",
 	"cabang":     "j.cabang",
 	"status":     statusSQL,
+	// Raw Data Pengobatan
+	"noRm":         "p.no_rm",
+	"alamat":       "p.alamat",
+	"kelurahan":    "kl.info",
+	"tglLahir":     "p.tgl_lahir",
+	"jenisKelamin": "g.info",
+	"asuransi":     "jk.nama",
+	"potongan":     "t.potongan",
+	"createUser":   "j.create_user",
 }
 
 // ListParams selects one page of sales.
@@ -103,6 +124,18 @@ type Repository interface {
 	ProsesStatus(ctx context.Context) ([]Option, error)
 	Dokter(ctx context.Context, branch string) ([]Dokter, error)
 	Obat(ctx context.Context, branch string) ([]Obat, error)
+	Tindakan(ctx context.Context, branch string, dokterID int) ([]Tindakan, error)
+	Penunjang(ctx context.Context, branch string) ([]Penunjang, error)
+	ICD(ctx context.Context, lp icd.ListParams) (icd.Page, error)
+	RegBranch(ctx context.Context, idKun int) (cabang string, status int, err error)
+	GetPemeriksaan(ctx context.Context, idKun int) (*PemeriksaanRecord, error)
+	SavePemeriksaan(ctx context.Context, idKun int, in Pemeriksaan, user string) error
+	Save(ctx context.Context, in SaveInput, user string) (SaveResult, error)
+	Kuitansi(ctx context.Context, id int) (Kuitansi, error)
+	Cetak(ctx context.Context, id int, user string) (Kuitansi, error)
+	Nota(ctx context.Context, id int) (Nota, error)
+	Detail(ctx context.Context, id int) (Detail, error)
+	Cancel(ctx context.Context, id int, reason, user string) error
 }
 
 type PostgresRepository struct {
@@ -126,19 +159,25 @@ const fromJoins = ` FROM trxjual j
 	LEFT JOIN refmpasien p ON p.id = j.id_pas
 	LEFT JOIN refmdokter dk ON dk.id = j.id_dok
 	LEFT JOIN refjenisrawat r ON r.id = j.id_jenis_rwt
-	LEFT JOIN refjenisbayar b ON b.id = j.id_jenis_byr`
+	LEFT JOIN refjenisbayar b ON b.id = j.id_jenis_byr
+	LEFT JOIN refkelurahan kl ON kl.id = p.id_kel
+	LEFT JOIN refgender g ON g.id = p.id_gender
+	LEFT JOIN refjaminankesehatan jk ON jk.id = j.id_jamkes`
 
 const rowColumns = `SELECT j.id, to_char(j.tgl, 'YYYY-MM-DD HH24:MI:SS'), COALESCE(j.no_kwi, ''), j.id_pas,
 	COALESCE(p.no_rm, ''), COALESCE(p.nama, ''), COALESCE(dk.nama, ''), j.id_jenis_rwt, COALESCE(r.info, ''),
 	j.id_jenis_byr, COALESCE(b.info, ''), COALESCE(t.tot_obat, 0), COALESCE(t.tot_tndk, 0), COALESCE(t.tot_pnjng, 0),
 	COALESCE(t.potongan, 0), COALESCE(t.total, 0), COALESCE(j.cabang, ''), ` + statusSQL + `,
-	COALESCE(t.cancelby, ''), to_char(t.cancelat, 'YYYY-MM-DD HH24:MI:SS'), COALESCE(t.cancelreason, '')`
+	COALESCE(t.cancelby, ''), to_char(t.cancelat, 'YYYY-MM-DD HH24:MI:SS'), COALESCE(t.cancelreason, ''),
+	COALESCE(p.alamat, ''), COALESCE(p.rt, ''), COALESCE(p.rw, ''), COALESCE(kl.info, ''), to_char(p.tgl_lahir, 'YYYY-MM-DD'),
+	COALESCE(g.info, ''), COALESCE(jk.nama, ''), COALESCE(j.create_user, '')`
 
 func scanRow(r pgx.CollectableRow) (Row, error) {
 	var x Row
 	err := r.Scan(&x.ID, &x.Tgl, &x.NoKwi, &x.IDPas, &x.NoRM, &x.Pasien, &x.Dokter, &x.IDJenisRawat, &x.JenisRawat,
 		&x.IDJenisBayar, &x.Pembayaran, &x.TotalObat, &x.TotalTindakan, &x.TotalPenunjang, &x.Potongan, &x.Total,
-		&x.Cabang, &x.Status, &x.CancelBy, &x.CancelAt, &x.CancelReason)
+		&x.Cabang, &x.Status, &x.CancelBy, &x.CancelAt, &x.CancelReason, &x.Alamat, &x.RT, &x.RW, &x.Kelurahan,
+		&x.TglLahir, &x.JenisKelamin, &x.Asuransi, &x.CreateUser)
 	return x, err
 }
 

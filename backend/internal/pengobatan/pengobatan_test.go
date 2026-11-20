@@ -1,8 +1,12 @@
 package pengobatan
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +15,7 @@ import (
 
 	"github.com/example/be_jwt_golang/backend/internal/auth"
 	"github.com/example/be_jwt_golang/backend/internal/branchauth"
+	"github.com/example/be_jwt_golang/backend/internal/icd"
 )
 
 const (
@@ -47,13 +52,25 @@ func TestWhere(t *testing.T) {
 }
 
 type fakeRepo struct {
-	userBranches map[string][]branchauth.Branch
-	lastList     ListParams
-	lists        int
-	lastReg      RegParams
-	regs         int
-	lastDokter   string
-	lastObat     string
+	userBranches  map[string][]branchauth.Branch
+	lastList      ListParams
+	lists         int
+	lastReg       RegParams
+	regs          int
+	lastDokter    string
+	lastObat      string
+	lastTindakan  string
+	lastPenunjang string
+	lastICD       icd.ListParams
+	regs2         map[int][2]any // idKun -> {cabang, status}
+	saved         map[int]Pemeriksaan
+	savedBy       string
+	saleIn        SaveInput
+	saleErr       error
+	sales         int
+	prints        []string
+	cancels       []string // "id reason user"
+	cancelled     bool
 }
 
 func (f *fakeRepo) UserBranches(_ context.Context, userID string) ([]branchauth.Branch, error) {
@@ -87,6 +104,83 @@ func (f *fakeRepo) Obat(_ context.Context, branch string) ([]Obat, error) {
 	f.lastObat = branch
 	return []Obat{{ID: 1, Nama: "ACESSORIES", Harga: 175000, Stok: 505}}, nil
 }
+func (f *fakeRepo) Tindakan(_ context.Context, branch string, dokterID int) ([]Tindakan, error) {
+	f.lastTindakan = fmt.Sprintf("%s/%d", branch, dokterID)
+	return []Tindakan{{ID: 41, Nama: "TINDAKAN DOKTER GIGI", Harga: 1750000, IsEdit: true}}, nil
+}
+func (f *fakeRepo) Penunjang(_ context.Context, branch string) ([]Penunjang, error) {
+	f.lastPenunjang = branch
+	return []Penunjang{{ID: 1, Nama: "ASAM URAT", Jenis: "LAB MOHC", Harga: 77000}}, nil
+}
+func (f *fakeRepo) ICD(_ context.Context, lp icd.ListParams) (icd.Page, error) {
+	f.lastICD = lp
+	return icd.Page{Rows: []icd.ICD{{ID: 1, Kode: "K04.3", Nama: "ABNORMAL HARD TISSUE FORMATION IN PULP", Jenis: "GIGI"}}, Total: 1, UnfilteredTotal: 1}, nil
+}
+func (f *fakeRepo) RegBranch(_ context.Context, idKun int) (string, int, error) {
+	r, ok := f.regs2[idKun]
+	if !ok {
+		return "", 0, ErrRegNotFound
+	}
+	return r[0].(string), r[1].(int), nil
+}
+func (f *fakeRepo) GetPemeriksaan(_ context.Context, idKun int) (*PemeriksaanRecord, error) {
+	p, ok := f.saved[idKun]
+	if !ok {
+		return nil, nil
+	}
+	return &PemeriksaanRecord{Pemeriksaan: p, UpdatedBy: f.savedBy}, nil
+}
+func (f *fakeRepo) SavePemeriksaan(_ context.Context, idKun int, in Pemeriksaan, user string) error {
+	if in.IDDokter != nil && *in.IDDokter == 999 {
+		return ErrUnknownDokter
+	}
+	if f.saved == nil {
+		f.saved = map[int]Pemeriksaan{}
+	}
+	f.saved[idKun], f.savedBy = in, user
+	return nil
+}
+func (f *fakeRepo) Save(_ context.Context, in SaveInput, _ string) (SaveResult, error) {
+	f.saleIn, f.sales = in, f.sales+1
+	if f.saleErr != nil {
+		return SaveResult{}, f.saleErr
+	}
+	return SaveResult{ID: 600001, NoKwi: "2611KMJ0001", Total: 175000, GrandTotal: 175000}, nil
+}
+func (f *fakeRepo) Kuitansi(_ context.Context, id int) (Kuitansi, error) {
+	switch id {
+	case 522954:
+		return Kuitansi{ID: id, NoKwi: "2611KMJ0438", Cabang: "KMJ", Jumlah: 50000}, nil
+	case 522000:
+		return Kuitansi{ID: id, NoKwi: "2611CTM0001", Cabang: "CTM"}, nil
+	}
+	return Kuitansi{}, ErrSaleNotFound
+}
+func (f *fakeRepo) Cetak(ctx context.Context, id int, user string) (Kuitansi, error) {
+	f.prints = append(f.prints, user)
+	k, _ := f.Kuitansi(ctx, id)
+	k.NoCetak, k.PrintedUser = "KMJ-26-11-00001", user
+	return k, nil
+}
+func (f *fakeRepo) Nota(_ context.Context, id int) (Nota, error) {
+	return Nota{ID: id, NoKwi: "2611KMJ0438", Obat: []NotaLine{{Nama: "MICROGINON", Byk: 1, Harga: 30000, Jumlah: 30000}}}, nil
+}
+func (f *fakeRepo) Detail(_ context.Context, id int) (Detail, error) {
+	status := "close"
+	if f.cancelled {
+		status = "cancel"
+	}
+	return Detail{ID: id, NoKwi: "2611KMJ0438", Cabang: "KMJ", Status: status, Obat: []DetailObat{{IDObat: 366, Nama: "MINYAK KAPAK", Byk: 1, Harga: 18000}},
+		Tindakan: []DetailTindakan{}, Penunjang: []DetailTindakan{}, Diagnosa: []DetailICD{}}, nil
+}
+func (f *fakeRepo) Cancel(_ context.Context, id int, reason, user string) error {
+	if f.cancelled {
+		return ErrAlreadyCancelled
+	}
+	f.cancelled = true
+	f.cancels = append(f.cancels, fmt.Sprintf("%d %s %s", id, reason, user))
+	return nil
+}
 func (f *fakeRepo) ProsesStatus(context.Context) ([]Option, error) {
 	return []Option{{ID: 3, Name: "DAFTAR"}, {ID: 4, Name: "PROSES"}, {ID: 5, Name: "PAYMENT"}}, nil
 }
@@ -103,20 +197,21 @@ func newServer(t *testing.T) *server {
 		csID: {{Kode: "KMJ", Nama: "KLINIK MITRA JATINEGARA"}, {Kode: "MED", Nama: "KLINIK MEDIKA"}},
 	}}
 	tokens := auth.NewTokenManager("test-secret-that-is-at-least-32-characters", time.Minute)
-	guarded := 0
+	guarded := map[string]int{}
 	requireMenu := func(path string) func(http.Handler) http.Handler {
-		if path != PagePath {
-			t.Fatalf("guarded by %q, want %q", path, PagePath)
+		if path != PagePath && path != ReportPath {
+			t.Fatalf("guarded by %q, want %q or %q", path, PagePath, ReportPath)
 		}
-		guarded++
+		guarded[path]++
 		return func(next http.Handler) http.Handler { return next }
 	}
 	h := NewHandler(repo)
 	h.now = func() time.Time { return now }
 	mux := http.NewServeMux()
 	h.Routes(mux, tokens.Middleware, requireMenu)
-	if guarded != 5 {
-		t.Fatalf("%d routes guarded, want 5", guarded)
+	// Raw Data Pengobatan (the list and its options) is guarded by the report menu.
+	if guarded[PagePath] != 16 || guarded[ReportPath] != 2 {
+		t.Fatalf("routes guarded: %v, want 16 by %s and 2 by %s", guarded, PagePath, ReportPath)
 	}
 	return &server{mux: mux, tokens: tokens, repo: repo}
 }
@@ -283,5 +378,365 @@ func TestObatLookup(t *testing.T) {
 	}
 	if s.repo.lastObat != "" {
 		t.Errorf("rejected requests reached the repository")
+	}
+}
+
+func TestTindakanLookup(t *testing.T) {
+	s := newServer(t)
+	code, out := s.get(t, csID, "/api/pengobatan/tindakan?cabang=med&dokter=13")
+	rows, _ := out["rows"].([]any)
+	if code != http.StatusOK || s.repo.lastTindakan != "MED/13" || len(rows) != 1 {
+		t.Fatalf("procedures of doctor 13 at MED: %d %v", code, out)
+	}
+	s.repo.lastTindakan = ""
+	for path, want := range map[string]int{
+		"/api/pengobatan/tindakan?cabang=MED":           http.StatusBadRequest, // no doctor
+		"/api/pengobatan/tindakan?cabang=MED&dokter=x":  http.StatusBadRequest,
+		"/api/pengobatan/tindakan?dokter=13":            http.StatusBadRequest, // no branch
+		"/api/pengobatan/tindakan?cabang=CTM&dokter=13": http.StatusForbidden,
+	} {
+		if code, _ := s.get(t, csID, path); code != want {
+			t.Errorf("%s: %d, want %d", path, code, want)
+		}
+	}
+	if s.repo.lastTindakan != "" {
+		t.Errorf("rejected requests reached the repository")
+	}
+}
+
+func TestPenunjangLookup(t *testing.T) {
+	s := newServer(t)
+	code, out := s.get(t, csID, "/api/pengobatan/penunjang?cabang=med")
+	rows, _ := out["rows"].([]any)
+	if code != http.StatusOK || s.repo.lastPenunjang != "MED" || len(rows) != 1 {
+		t.Fatalf("examinations at MED: %d %v", code, out)
+	}
+	s.repo.lastPenunjang = ""
+	for path, want := range map[string]int{
+		"/api/pengobatan/penunjang":            http.StatusBadRequest,
+		"/api/pengobatan/penunjang?cabang=CTM": http.StatusForbidden,
+	} {
+		if code, _ := s.get(t, csID, path); code != want {
+			t.Errorf("%s: %d, want %d", path, code, want)
+		}
+	}
+	if s.repo.lastPenunjang != "" {
+		t.Errorf("rejected requests reached the repository")
+	}
+}
+
+func TestICDLookup(t *testing.T) {
+	s := newServer(t)
+	code, out := s.get(t, csID, "/api/pengobatan/icd")
+	lp := s.repo.lastICD
+	if code != http.StatusOK || out["total"] != 1.0 || lp.Sort != "id" || lp.Desc || lp.Limit != 10 || lp.Offset != 0 {
+		t.Fatalf("default ICD page (by id, 10 rows): %d %v %+v", code, out, lp)
+	}
+	s.get(t, csID, "/api/pengobatan/icd?q=+gingivitis+&sort=nama&dir=desc&size=20&page=3")
+	if lp = s.repo.lastICD; lp.Search != "gingivitis" || lp.Sort != "nama" || !lp.Desc || lp.Limit != 20 || lp.Offset != 40 {
+		t.Errorf("filtered ICD page: %+v", lp)
+	}
+	s.get(t, csID, "/api/pengobatan/icd?sort=drop&size=9999")
+	if lp = s.repo.lastICD; lp.Sort != "id" || lp.Limit != 100 {
+		t.Errorf("unknown sort / huge size: %+v", lp)
+	}
+	// Codes are not per branch: a user without branches may still look them up.
+	if code, _ := s.get(t, loneID, "/api/pengobatan/icd"); code != http.StatusOK {
+		t.Errorf("user without branches: %d", code)
+	}
+}
+
+func (s *server) put(t *testing.T, userID, path, body string) (int, map[string]any) {
+	t.Helper()
+	req := httptest.NewRequest("PUT", path, strings.NewReader(body))
+	tok, _, _ := s.tokens.Generate(userID, "a-very-long-email-address@medika.com")
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, req)
+	out := map[string]any{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec.Code, out
+}
+
+func TestPemeriksaan(t *testing.T) {
+	s := newServer(t)
+	s.repo.regs2 = map[int][2]any{
+		518586: {"KMJ", 3}, // DAFTAR at the caller's branch
+		518001: {"KMJ", 2}, // CLOSE
+		518999: {"CTM", 3}, // another branch
+	}
+	// Nothing saved yet.
+	if code, out := s.get(t, csID, "/api/pengobatan/pemeriksaan/518586"); code != http.StatusOK || out["pemeriksaan"] != nil {
+		t.Fatalf("empty examination: %d %v", code, out)
+	}
+	body := `{"keluhanUtama":"  demam 3 hari ","sistole":120,"diastole":80,"beratBadan":60,"tinggiBadan":165,"suhu":38.5,"idDokter":13}`
+	code, out := s.put(t, csID, "/api/pengobatan/pemeriksaan/518586", body)
+	saved := s.repo.saved[518586]
+	if code != http.StatusOK || saved.KeluhanUtama != "demam 3 hari" || *saved.Sistole != 120 || *saved.Suhu != 38.5 || *saved.IDDokter != 13 {
+		t.Fatalf("save: %d %v %+v", code, out, saved)
+	}
+	if s.repo.savedBy != "a-very-long-email-ad" {
+		t.Errorf("user must be cut to 20 characters: %q", s.repo.savedBy)
+	}
+	if code, out := s.get(t, csID, "/api/pengobatan/pemeriksaan/518586"); code != http.StatusOK || out["pemeriksaan"] == nil {
+		t.Errorf("saved examination not returned: %d %v", code, out)
+	}
+	for name, c := range map[string]struct {
+		path, body string
+		want       int
+	}{
+		"closed visit":    {"/api/pengobatan/pemeriksaan/518001", "{}", http.StatusConflict},
+		"other branch":    {"/api/pengobatan/pemeriksaan/518999", "{}", http.StatusNotFound},
+		"unknown visit":   {"/api/pengobatan/pemeriksaan/1", "{}", http.StatusNotFound},
+		"bad id":          {"/api/pengobatan/pemeriksaan/x", "{}", http.StatusNotFound},
+		"too long":        {"/api/pengobatan/pemeriksaan/518586", `{"keluhanUtama":"` + strings.Repeat("a", 301) + `"}`, http.StatusBadRequest},
+		"bad temperature": {"/api/pengobatan/pemeriksaan/518586", `{"suhu":60}`, http.StatusBadRequest},
+		"bad pressure":    {"/api/pengobatan/pemeriksaan/518586", `{"sistole":-1}`, http.StatusBadRequest},
+		"unknown doctor":  {"/api/pengobatan/pemeriksaan/518586", `{"idDokter":999}`, http.StatusBadRequest},
+		"bad json":        {"/api/pengobatan/pemeriksaan/518586", `{`, http.StatusBadRequest},
+	} {
+		if code, out := s.put(t, csID, c.path, c.body); code != c.want {
+			t.Errorf("%s: %d %v, want %d", name, code, out, c.want)
+		}
+	}
+	if code, _ := s.get(t, csID, "/api/pengobatan/pemeriksaan/518999"); code != http.StatusNotFound {
+		t.Errorf("other branch read: %d", code)
+	}
+}
+
+func TestSaleRules(t *testing.T) {
+	// Drugs: each line (and its PPN) rounded up to 500.
+	for _, c := range []struct {
+		harga, byk          float64
+		tax                 bool
+		jumlah, ppn, billed float64
+	}{
+		{175000, 1, false, 175000, 0, 175000},
+		{4000, 6, true, 24000, 2400, 24000 + 2500},
+		{5406, 1, false, 5406, 0, 5500},
+		{0.1 * 3, 1000, false, 300, 0, 500}, // floating-point dust is ignored
+		{110010, 1, false, 110010, 0, 110500},
+	} {
+		j, p, b := obatLine(c.harga, c.byk, c.tax)
+		if math.Abs(j-c.jumlah) > 1e-6 || math.Abs(p-c.ppn) > 1e-6 || b != c.billed {
+			t.Errorf("obatLine(%v, %v, %v) = %v %v %v, want %v %v %v", c.harga, c.byk, c.tax, j, p, b, c.jumlah, c.ppn, c.billed)
+		}
+	}
+	// Settlement, as in lab: cash handed over, settled part, receivable, change.
+	pay := func(v float64) *float64 { return &v }
+	for _, c := range []struct {
+		total, potongan                 float64
+		payment                         *float64
+		grand, bayar, cicil, utang, kbl float64
+	}{
+		{302500, 60500, nil, 242000, 242000, 242000, 0, 0},        // paid exactly
+		{25000, 0, pay(250000), 25000, 250000, 25000, 0, 225000},  // cash with change
+		{285000, 0, pay(0), 285000, 0, 0, 285000, 0},              // insurer pays later
+		{286000, 0, pay(281000), 286000, 281000, 281000, 5000, 0}, // partly paid
+	} {
+		g, b, ci, u, k := settle(c.total, c.potongan, c.payment)
+		if g != c.grand || b != c.bayar || ci != c.cicil || u != c.utang || k != c.kbl {
+			t.Errorf("settle(%v, %v) = %v %v %v %v %v", c.total, c.potongan, g, b, ci, u, k)
+		}
+	}
+}
+
+func validSale() SaveInput {
+	return SaveInput{
+		Cabang: "kmj", TglKwi: "2026-11-19", IDKun: 518586, IDJenisRawat: 2, IDJenisBayar: 1, IDDokter: 13,
+		Obat: []SaveObat{{IDObat: 1, Byk: 1, Dosis: " 3 x 1 "}}, Diagnosa: []int{5},
+	}
+}
+
+func TestSaveValidate(t *testing.T) {
+	in := validSale()
+	if errs := in.Validate("2026-11-19"); len(errs) != 0 || in.Cabang != "KMJ" || in.Obat[0].Dosis != "3 x 1" {
+		t.Fatalf("valid sale: %v %+v", errs, in)
+	}
+	for name, c := range map[string]struct {
+		mut   func(*SaveInput)
+		field string
+	}{
+		"future date":       {func(i *SaveInput) { i.TglKwi = "2026-11-20" }, "tglKwi"},
+		"no visit":          {func(i *SaveInput) { i.IDKun = 0 }, "idKun"},
+		"no doctor":         {func(i *SaveInput) { i.IDDokter = 0 }, "idDokter"},
+		"no items":          {func(i *SaveInput) { i.Obat = nil }, "items"},
+		"zero quantity":     {func(i *SaveInput) { i.Obat[0].Byk = 0 }, "obat"},
+		"drug twice":        {func(i *SaveInput) { i.Obat = append(i.Obat, SaveObat{IDObat: 1, Byk: 2}) }, "obat"},
+		"long dosis":        {func(i *SaveInput) { i.Obat[0].Dosis = strings.Repeat("x", 101) }, "obat"},
+		"negative price":    {func(i *SaveInput) { h := -1.0; i.Tindakan = []SaveTindakan{{IDTindakan: 41, Byk: 1, Harga: &h}} }, "tindakan"},
+		"diagnosis twice":   {func(i *SaveInput) { i.Diagnosa = []int{5, 5} }, "diagnosa"},
+		"negative discount": {func(i *SaveInput) { i.Diskon = -1 }, "diskon"},
+	} {
+		in := validSale()
+		c.mut(&in)
+		if errs := in.Validate("2026-11-19"); errs[c.field] == "" {
+			t.Errorf("%s: want an error on %s, got %v", name, c.field, errs)
+		}
+	}
+}
+
+func TestSave(t *testing.T) {
+	s := newServer(t)
+	post := func(body any) (int, map[string]any) {
+		t.Helper()
+		b, _ := json.Marshal(body)
+		req := httptest.NewRequest("POST", "/api/pengobatan", bytes.NewReader(b))
+		tok, _, _ := s.tokens.Generate(csID, "cs@medika.com")
+		req.Header.Set("Authorization", "Bearer "+tok)
+		rec := httptest.NewRecorder()
+		s.mux.ServeHTTP(rec, req)
+		out := map[string]any{}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+	// 23:30 UTC on 18 Nov is 19 Nov in Jakarta, so the 19th is "today".
+	code, out := post(validSale())
+	if code != http.StatusCreated || out["noKwi"] != "2611KMJ0001" || s.repo.saleIn.Cabang != "KMJ" {
+		t.Fatalf("save: %d %v", code, out)
+	}
+	other := validSale()
+	other.Cabang = "CTM"
+	if code, _ := post(other); code != http.StatusForbidden {
+		t.Errorf("other branch: %d", code)
+	}
+	bad := validSale()
+	bad.Obat = nil
+	before := s.repo.sales
+	if code, _ := post(bad); code != http.StatusBadRequest || s.repo.sales != before {
+		t.Errorf("invalid sale must not reach the repository: %d", code)
+	}
+	for err, want := range map[error]int{
+		ErrRegNotFound:    http.StatusBadRequest,
+		ErrBranchMismatch: http.StatusBadRequest,
+		ErrRegNotEditable: http.StatusConflict,
+		ErrAlreadyBilled:  http.StatusConflict,
+		&ItemError{Field: "obat", ID: 1, Msg: "X: not enough stock (0 left, 1 asked)"}:              http.StatusConflict,
+		&ItemError{Field: "tindakan", ID: 41, Msg: "not a procedure of this doctor at this branch"}: http.StatusBadRequest,
+		errors.New("db down"): http.StatusInternalServerError,
+	} {
+		s.repo.saleErr = err
+		if code, out := post(validSale()); code != want {
+			t.Errorf("%v: %d %v, want %d", err, code, out, want)
+		}
+	}
+}
+
+func TestKuitansi(t *testing.T) {
+	s := newServer(t)
+	if code, out := s.get(t, csID, "/api/pengobatan/kuitansi/522954"); code != http.StatusOK || out["noKwi"] != "2611KMJ0438" || out["jumlah"] != 50000.0 {
+		t.Fatalf("receipt: %d %v", code, out)
+	}
+	for path, want := range map[string]int{
+		"/api/pengobatan/kuitansi/522000": http.StatusNotFound, // another branch
+		"/api/pengobatan/kuitansi/1":      http.StatusNotFound,
+		"/api/pengobatan/kuitansi/x":      http.StatusNotFound,
+	} {
+		if code, _ := s.get(t, csID, path); code != want {
+			t.Errorf("%s: %d, want %d", path, code, want)
+		}
+	}
+	req := httptest.NewRequest("POST", "/api/pengobatan/kuitansi/522954/cetak", nil)
+	tok, _, _ := s.tokens.Generate(csID, "cs.kmj@medika.com")
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || len(s.repo.prints) != 1 || s.repo.prints[0] != "cs.kmj" {
+		t.Fatalf("print: %d %s %v (the user is printed without the domain)", rec.Code, rec.Body, s.repo.prints)
+	}
+	req = httptest.NewRequest("POST", "/api/pengobatan/kuitansi/522000/cetak", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rec = httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound || len(s.repo.prints) != 1 {
+		t.Errorf("another branch's print: %d", rec.Code)
+	}
+}
+
+func TestNota(t *testing.T) {
+	s := newServer(t)
+	code, out := s.get(t, csID, "/api/pengobatan/nota/522954")
+	if code != http.StatusOK || out["noKwi"] != "2611KMJ0438" || len(out["obat"].([]any)) != 1 {
+		t.Fatalf("nota: %d %v", code, out)
+	}
+	if code, _ := s.get(t, csID, "/api/pengobatan/nota/522000"); code != http.StatusNotFound {
+		t.Errorf("another branch's nota: %d", code)
+	}
+}
+
+func (s *server) send(t *testing.T, method, userID, path, body string) (int, map[string]any) {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	tok, _, _ := s.tokens.Generate(userID, "a-very-long-email-address-for-cancel@medika.com")
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, req)
+	out := map[string]any{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec.Code, out
+}
+
+func TestDetail(t *testing.T) {
+	s := newServer(t)
+	code, out := s.get(t, csID, "/api/pengobatan/detail/522954")
+	if code != http.StatusOK || out["noKwi"] != "2611KMJ0438" || len(out["obat"].([]any)) != 1 {
+		t.Fatalf("detail: %d %v", code, out)
+	}
+	for path, want := range map[string]int{
+		"/api/pengobatan/detail/522000": http.StatusNotFound, // another branch
+		"/api/pengobatan/detail/1":      http.StatusNotFound,
+		"/api/pengobatan/detail/abc":    http.StatusNotFound,
+	} {
+		if code, _ := s.get(t, csID, path); code != want {
+			t.Errorf("%s: %d, want %d", path, code, want)
+		}
+	}
+}
+
+func TestCancel(t *testing.T) {
+	s := newServer(t)
+	for body, want := range map[string]int{
+		`{"alasan":"   "}`: http.StatusBadRequest,
+		`{}`:               http.StatusBadRequest,
+		`{"alasan":"` + strings.Repeat("x", 101) + `"}`: http.StatusBadRequest,
+		`not json`: http.StatusBadRequest,
+	} {
+		if code, _ := s.send(t, "POST", csID, "/api/pengobatan/detail/522954/cancel", body); code != want {
+			t.Errorf("%s: %d, want %d", body, code, want)
+		}
+	}
+	if len(s.repo.cancels) != 0 {
+		t.Fatalf("invalid input cancelled: %v", s.repo.cancels)
+	}
+	if code, _ := s.send(t, "POST", csID, "/api/pengobatan/detail/522000/cancel", `{"alasan":"SALAH INPUT"}`); code != http.StatusNotFound {
+		t.Errorf("another branch's sale: %d", code)
+	}
+	code, out := s.send(t, "POST", csID, "/api/pengobatan/detail/522954/cancel", `{"alasan":"  SALAH INPUT "}`)
+	if code != http.StatusOK || out["status"] != "cancel" {
+		t.Fatalf("cancel: %d %v", code, out)
+	}
+	// The user is the e-mail without its domain, cut to cancelby's 30 characters.
+	if got := s.repo.cancels; len(got) != 1 || got[0] != "522954 SALAH INPUT a-very-long-email-address-for-" {
+		t.Errorf("cancel call: %q", got)
+	}
+	if code, _ := s.send(t, "POST", csID, "/api/pengobatan/detail/522954/cancel", `{"alasan":"LAGI"}`); code != http.StatusConflict {
+		t.Errorf("second cancel: %d", code)
+	}
+}
+
+func TestRawDataPengobatan(t *testing.T) {
+	s := newServer(t)
+	code, out := s.get(t, csID, "/api/report-klinik/raw-data-pengobatan?from=2026-11-01&to=2026-11-08&sort=jenisKelamin&dir=asc&status=cancel")
+	if code != http.StatusOK || out["rows"] == nil {
+		t.Fatalf("raw data: %d %v", code, out)
+	}
+	if lp := s.repo.lastList; lp.Sort != "jenisKelamin" || lp.Status != "cancel" || lp.From != "2026-11-01" || len(lp.Branches) != 2 {
+		t.Errorf("list params: %+v", lp)
+	}
+	if code, out := s.get(t, csID, "/api/report-klinik/raw-data-pengobatan/options"); code != http.StatusOK || out["branches"] == nil {
+		t.Errorf("options: %d %v", code, out)
+	}
+	if code, _ := s.get(t, "", "/api/report-klinik/raw-data-pengobatan"); code != http.StatusUnauthorized {
+		t.Errorf("no token: %d", code)
 	}
 }

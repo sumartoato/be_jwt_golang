@@ -19,13 +19,21 @@ export function findTrail(items: MenuItem[], pathname: string): MenuItem[] {
 const SUB_PAGES: Record<string, string> = { new: "Add" };
 
 /**
- * Like findTrail, but also accepts a sub-page such as /transaksi-klinik/pengobatan/new:
+ * Like findTrail, but also accepts a sub-page such as /transaksi-klinik/pengobatan/new
+ * (or a record's page, .../edit/<id> or .../view/<id>):
  * it returns the parent page's trail plus the sub-page's label. Access follows the parent menu.
  */
 export function findPageTrail(items: MenuItem[], pathname: string): { items: MenuItem[]; sub?: string } {
   const exact = findTrail(items, pathname);
   if (exact.length > 0) return { items: exact };
   const path = normalize(pathname);
+  // A record's page such as /transaksi-klinik/pengobatan/edit/522960 or
+  // /transaksi-klinik/penerimaan-barang/view/13809.
+  const record = path.match(/^(.+)\/(edit|view)\/\d+$/);
+  if (record) {
+    const parent = findTrail(items, record[1]);
+    return parent.length > 0 ? { items: parent, sub: record[2] === "edit" ? "Edit" : "View" } : { items: [] };
+  }
   const cut = path.lastIndexOf("/");
   const label = SUB_PAGES[path.slice(cut + 1)];
   if (cut > 0 && label) {

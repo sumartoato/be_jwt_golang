@@ -515,6 +515,17 @@ export interface Pengobatan {
   cancelBy: string;
   cancelAt: string | null;
   cancelReason: string;
+  /** Report Klinik > Raw Data Pengobatan columns. */
+  alamat: string;
+  rt: string;
+  rw: string;
+  kelurahan: string;
+  tglLahir: string | null;
+  jenisKelamin: string;
+  /** The sale's insurer. */
+  asuransi: string;
+  /** Dibuat Oleh: who created the sale. */
+  createUser: string;
 }
 
 export interface PengobatanOptions {
@@ -562,6 +573,214 @@ export interface PengobatanDokter {
 }
 
 /** A drug in the Pengobatan form's "Data Obat" lookup, with the branch price and stock. */
+/** A branch the logged-in user is mapped to (refbranchauth). */
+export interface MyBranch {
+  kode: string;
+  nama: string;
+}
+
+/** A procedure in the Pengobatan form's "Data Tindakan Dokter" lookup, priced for the branch. */
+export interface PengobatanTindakan {
+  id: number;
+  nama: string;
+  jenis: string;
+  harga: number;
+  /** The price may be changed in the form. */
+  isEdit: boolean;
+}
+
+/** A supporting examination in the Penunjang tab's lookup, priced for the branch. */
+export interface PengobatanPenunjang {
+  id: number;
+  nama: string;
+  jenis: string;
+  harga: number;
+}
+
+/** An ICD-X code in the Diagnosa tab's "Data Diagnosa" lookup. */
+export interface PengobatanIcd {
+  id: number;
+  kode: string;
+  nama: string;
+  jenis: string;
+}
+
+/** The examination of a registration (trxpemeriksaan), as sent to be saved. */
+export interface PemeriksaanInput {
+  keluhanUtama: string;
+  anamnesis: string;
+  sistole: number | null;
+  diastole: number | null;
+  beratBadan: number | null;
+  tinggiBadan: number | null;
+  suhu: number | null;
+  pemeriksaanFisik: string;
+  rekapHasilPenunjang: string;
+  hasilPenunjang: string;
+  rencanaPenatalaksanaan: string;
+  hasilPemeriksaanDokter: string;
+  tindakanDokter: string;
+  /** Dokter PJ. */
+  idDokter: number | null;
+}
+
+/** A saved examination, with who last changed it. */
+export interface PemeriksaanRecord extends PemeriksaanInput {
+  dokter: string;
+  updatedBy: string;
+  updatedAt: string | null;
+}
+
+/** The Pengobatan form as sent by Save; the server prices it from the master data. */
+export interface PengobatanSaveInput {
+  cabang: string;
+  tglKwi: string;
+  idKun: number;
+  idJenisRawat: number;
+  idJenisBayar: number;
+  idDokter: number;
+  obat: { idObat: number; byk: number; dosis: string }[];
+  /** harga only for procedures whose price is editable. */
+  tindakan: { idTindakan: number; byk: number; harga: number | null }[];
+  penunjang: { idPenunjang: number; byk: number }[];
+  diagnosa: number[];
+  diskon: number;
+  /** Money handed over; null = exactly the amount due. */
+  payment: number | null;
+}
+
+/** A saved sale as the Edit page shows it (GET /api/pengobatan/detail/{id}). */
+export interface PengobatanDetail {
+  id: number;
+  noKwi: string;
+  tglKwi: string | null;
+  cabang: string;
+  idJenisRawat: number | null;
+  idJenisBayar: number | null;
+  idDokter: number | null;
+  dokter: string;
+  status: PengobatanStatus;
+  cancelBy: string;
+  cancelAt: string | null;
+  cancelReason: string;
+  /** The registration with its patient; null when it no longer exists. */
+  reg: PengobatanPendaftaran | null;
+  obat: { idObat: number; nama: string; jenis: string; satuan: string; harga: number; byk: number; kenaPajak: boolean; ppn: number; dosis: string }[];
+  tindakan: PengobatanDetailLine[];
+  penunjang: PengobatanDetailLine[];
+  diagnosa: PengobatanIcd[];
+  totObat: number;
+  totTindakan: number;
+  totPenunjang: number;
+  total: number;
+  potongan: number;
+  grandTotal: number;
+  pembayaran: number;
+  piutang: number;
+  kembalian: number;
+}
+
+export interface PengobatanDetailLine {
+  id: number;
+  nama: string;
+  jenis: string;
+  dokter?: string;
+  harga: number;
+  byk: number;
+  isEdit: boolean;
+}
+
+export interface PengobatanSaveResult {
+  id: number;
+  noKwi: string;
+  totObat: number;
+  totTindakan: number;
+  totPenunjang: number;
+  total: number;
+  potongan: number;
+  grandTotal: number;
+  pembayaran: number;
+  cicilan: number;
+  piutang: number;
+  kembalian: number;
+}
+
+/** The receipt data of a saved sale ("Kwitansi"). */
+export interface Kuitansi {
+  id: number;
+  noKwi: string;
+  tglKwi: string | null;
+  cabang: string;
+  namaCabang: string;
+  noRm: string;
+  pasien: string;
+  biayaObat: number;
+  biayaTindakan: number;
+  biayaPenunjang: number;
+  potongan: number;
+  /** Total minus discount: the amount on the receipt. */
+  jumlah: number;
+  /** Empty until the first print. */
+  noCetak: string;
+  printedBy: string;
+  printedAt: string | null;
+  /** Set by cetakKuitansi: this print's server time and user. */
+  printedNow?: string;
+  printedUser?: string;
+}
+
+/** A priced line on the printed bill. */
+export interface NotaLine {
+  nama: string;
+  satuan?: string;
+  byk: number;
+  harga: number;
+  jumlah: number;
+  ppn?: number;
+  dosis?: string;
+}
+
+/** A saved sale with its lines, for the Print menu. */
+export interface Nota {
+  id: number;
+  noKwi: string;
+  tgl: string | null;
+  cabang: string;
+  namaCabang: string;
+  alamatCabang: string;
+  telpCabang: string;
+  /** The company the branch is registered under. */
+  namaPt: string;
+  /** Print number, set at the first print. */
+  noCetak: string;
+  idKun: number | null;
+  noRm: string;
+  pasien: string;
+  alamatPasien: string;
+  penanggung: string;
+  /** The patient's points balance. */
+  point: number;
+  dokter: string;
+  pelayanan: string;
+  jenisBayar: string;
+  jamkes: string;
+  kasir: string;
+  obat: NotaLine[];
+  tindakan: NotaLine[];
+  penunjang: NotaLine[];
+  diagnosa: string[];
+  totObat: number;
+  totTindakan: number;
+  totPenunjang: number;
+  total: number;
+  potongan: number;
+  grandTotal: number;
+  pembayaran: number;
+  piutang: number;
+  kembalian: number;
+  status: PengobatanStatus;
+}
+
 export interface PengobatanObat {
   id: number;
   nama: string;
@@ -602,6 +821,578 @@ export interface PengobatanQuery {
   status?: PengobatanStatus;
 }
 
+/** Report Klinik > Penjualan Obat: a drug sold on one day at one price and branch; byk is summed. */
+export interface PenjualanObat {
+  tgl: string;
+  idObat: number;
+  obat: string;
+  jenis: string;
+  satuan: string;
+  harga: number;
+  byk: number;
+  /** Harga × Banyak. */
+  jumlah: number;
+  cabang: string;
+  status: PengobatanStatus;
+}
+
+export interface PenjualanObatQuery {
+  from: string;
+  to: string;
+  page: number;
+  size: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+  cabang?: string;
+  nama?: string;
+  jenis?: number;
+  status?: PengobatanStatus;
+}
+
+export interface PenjualanObatOptions {
+  jenis: { id: number; name: string }[];
+  branches: { kode: string; nama: string }[];
+  today: string;
+}
+
+/** Report Klinik > Penjualan Tindakan: one procedure line sold, with the doctor's fee. */
+export interface PenjualanTindakan {
+  id: number;
+  idJual: number;
+  tgl: string;
+  tindakan: string;
+  jenis: string;
+  dokter: string;
+  pasien: string;
+  /** The branch's doctor fee for the procedure (master data). */
+  fee: number;
+  /** The price sold at. */
+  harga: number;
+  byk: number;
+  /** Fee × Banyak. */
+  totalFee: number;
+  cabang: string;
+  status: PengobatanStatus;
+}
+
+export interface PenjualanTindakanQuery {
+  from: string;
+  to: string;
+  page: number;
+  size: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+  cabang?: string;
+  nama?: string;
+  dokter?: string;
+  status?: PengobatanStatus;
+}
+
+/** Report Klinik > Penjualan Penunjang: one supporting examination sold. */
+export interface PenjualanPenunjang {
+  id: number;
+  idJual: number;
+  tgl: string;
+  noRm: string;
+  pasien: string;
+  penunjang: string;
+  jenis: string;
+  /** The sale's Dokter PJ. */
+  dokter: string;
+  harga: number;
+  byk: number;
+  cabang: string;
+  status: PengobatanStatus;
+  /** Dibuat Oleh: who created the sale. */
+  createUser: string;
+}
+
+export interface PenjualanPenunjangQuery {
+  from: string;
+  to: string;
+  page: number;
+  size: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+  cabang?: string;
+  nama?: string;
+  jenis?: number;
+  status?: PengobatanStatus;
+}
+
+/** Report Klinik > Penjualan OTC: one drug line of type OTC, with the sale's referrer. */
+export interface PenjualanOTC {
+  id: number;
+  /** No Trans. */
+  idJual: number;
+  tgl: string;
+  noKwi: string;
+  obat: string;
+  jenis: string;
+  perujuk: string;
+  byk: number;
+  harga: number;
+  ppn: number;
+  /** Harga × Banyak + PPN. */
+  total: number;
+  cabang: string;
+  status: PengobatanStatus;
+}
+
+export interface PenjualanOTCQuery {
+  from: string;
+  to: string;
+  page: number;
+  size: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+  cabang?: string;
+  nama?: string;
+  perujuk?: number;
+  status?: PengobatanStatus;
+}
+
+export interface PenjualanOTCOptions {
+  perujuk: { id: number; name: string }[];
+  branches: { kode: string; nama: string }[];
+  today: string;
+}
+
+/** Report Klinik > Pasien Baru: one visit (sale) of a patient registered in the period. */
+export interface PasienBaru {
+  idJual: number;
+  /** Tanggal Kunjungan, "YYYY-MM-DD HH:MM:SS". */
+  tgl: string;
+  noRm: string;
+  pasien: string;
+  jenisRawat: string;
+  tempatLahir: string;
+  tglLahir: string | null;
+  /** Age in years on the visit day. */
+  umur: number | null;
+  alamat: string;
+  /** The day the patient was registered. */
+  tglDaftar: string;
+  dokter: string;
+  status: PengobatanStatus;
+  cabang: string;
+}
+
+export interface PasienBaruQuery {
+  from: string;
+  to: string;
+  page: number;
+  size: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+  cabang?: string;
+  nama?: string;
+  pelayanan?: number;
+  status?: PengobatanStatus;
+}
+
+export interface PasienBaruOptions {
+  pelayanan: { id: number; name: string }[];
+  branches: { kode: string; nama: string }[];
+  today: string;
+}
+
+/** An item of an insured sale (Rekap Asuransi). */
+export interface RekapAsuransiLine {
+  nama: string;
+  byk: number;
+  harga: number;
+  /** Harga × Banyak. */
+  jumlah: number;
+}
+
+/** Report Klinik > Rekap Asuransi: one insured sale with its items per group. */
+export interface RekapAsuransi {
+  idJual: number;
+  tgl: string;
+  noRm: string;
+  /** Card Number. */
+  noKartu: string;
+  /** The insurer. */
+  perusahaan: string;
+  pasien: string;
+  dokter: string;
+  diagnosa: string[];
+  obat: RekapAsuransiLine[];
+  tindakan: RekapAsuransiLine[];
+  penunjang: RekapAsuransiLine[];
+  total: number;
+  cabang: string;
+  status: PengobatanStatus;
+}
+
+export interface RekapAsuransiQuery {
+  from: string;
+  to: string;
+  page: number;
+  size: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+  cabang?: string;
+  nama?: string;
+  asuransi?: number;
+  status?: PengobatanStatus;
+}
+
+export interface RekapAsuransiOptions {
+  asuransi: { id: number; name: string }[];
+  branches: { kode: string; nama: string }[];
+  today: string;
+}
+
+/** Report Klinik > Transaksi Harian: one sale with its cost per group. */
+export interface TransaksiHarian {
+  idJual: number;
+  tgl: string;
+  noRm: string;
+  pasien: string;
+  pelayanan: string;
+  dokter: string;
+  pembayaran: string;
+  obat: number;
+  tindakan: number;
+  penunjang: number;
+  total: number;
+  cabang: string;
+  status: PengobatanStatus;
+  diskon: number;
+}
+
+export interface TransaksiHarianQuery {
+  from: string;
+  to: string;
+  page: number;
+  size: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+  cabang?: string;
+  pelayanan?: number;
+  nama?: string;
+  pembayaran?: number;
+  status?: PengobatanStatus;
+}
+
+export interface TransaksiHarianOptions {
+  pelayanan: { id: number; name: string }[];
+  pembayaran: { id: number; name: string }[];
+  branches: { kode: string; nama: string }[];
+  today: string;
+}
+
+/** Report Klinik > All Stok: one drug at one branch with its stock movement over the period. */
+export interface AllStok {
+  /** Kode. */
+  idObat: number;
+  obat: string;
+  satuanBeli: string;
+  isiPerBox: string;
+  satuanJual: string;
+  hargaBeli: number;
+  hargaJual: number;
+  jenis: string;
+  principal: string;
+  distributor: string;
+  /** Kode Moving PO. */
+  movingPo: string;
+  stokAwal: number;
+  jual: number;
+  stokAkhir: number;
+  cabang: string;
+}
+
+export interface AllStokQuery {
+  from: string;
+  to: string;
+  page: number;
+  size: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+  cabang?: string;
+  nama?: string;
+  jenis?: number;
+  movingPo?: number;
+}
+
+export interface AllStokOptions {
+  jenis: { id: number; name: string }[];
+  movingPo: { id: number; name: string }[];
+  branches: { kode: string; nama: string }[];
+  today: string;
+}
+
+/** Report Klinik > Rujukan: a sale of an external doctor, once per supporting examination. */
+export interface Rujukan {
+  idJual: number;
+  /** The examination line; null for a sale without one. */
+  idLine: number | null;
+  tgl: string;
+  noRm: string;
+  pasien: string;
+  /** Dokter Eksternal. */
+  dokter: string;
+  jenisRawat: string;
+  penunjang: string;
+  /** The examination's Harga × Banyak; 0 without one. */
+  total: number;
+  cabang: string;
+  status: PengobatanStatus;
+}
+
+export interface RujukanQuery {
+  from: string;
+  to: string;
+  page: number;
+  size: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+  cabang?: string;
+  nama?: string;
+  dokter?: string;
+  status?: PengobatanStatus;
+}
+
+/** Report Klinik > Pendaftaran: one registration. */
+export interface ReportPendaftaran {
+  /** No Pendaftaran. */
+  id: number;
+  noAntri: number | null;
+  /** "YYYY-MM-DD HH:MM:SS". */
+  tgl: string | null;
+  pelayanan: string;
+  /** Status Kun, e.g. CLOSE, DAFTAR. */
+  statusKun: string;
+  noRm: string;
+  pasien: string;
+  /** Age in years on the registration day. */
+  umur: number | null;
+  alamat: string;
+  cabang: string;
+}
+
+export interface ReportPendaftaranQuery {
+  from: string;
+  to: string;
+  page: number;
+  size: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+  cabang?: string;
+  nama?: string;
+  pelayanan?: number;
+  statusKunjungan?: number;
+}
+
+export interface ReportPendaftaranOptions {
+  pelayanan: { id: number; name: string }[];
+  statusKunjungan: { id: number; name: string }[];
+  branches: { kode: string; nama: string }[];
+  today: string;
+}
+
+/** Report Klinik > Report Pendapatan: one branch's sales in a period, for the PDF. */
+export interface ReportPendapatan {
+  cabang: string;
+  namaCabang: string;
+  telpCabang: string;
+  from: string;
+  to: string;
+  /** Tanggal Posting: today, clinic time. */
+  today: string;
+  /** The caller (e-mail without its domain). */
+  petugas: string;
+  rows: {
+    idJual: number;
+    /** "YYYY-MM-DD HH:MM:SS.mmm". */
+    tgl: string;
+    noKwi: string;
+    pasien: string;
+    obat: number;
+    tindakan: number;
+    penunjang: number;
+    total: number;
+    potongan: number;
+    /** The patient was registered in the period. */
+    baru: boolean;
+  }[];
+}
+
+export interface ReportPendapatanOptions {
+  pelayanan: { id: number; name: string }[];
+  branches: { kode: string; nama: string }[];
+  today: string;
+}
+
+/** Report Klinik > Report Diagnosa: one diagnosis of a sale. */
+export interface ReportDiagnosa {
+  id: number;
+  idJual: number;
+  /** "YYYY-MM-DD HH:MM:SS". */
+  tgl: string;
+  noRm: string;
+  pasien: string;
+  tglLahir: string | null;
+  /** Age in years on the visit day. */
+  usia: number | null;
+  jenisKelamin: string;
+  dokter: string;
+  jenisRawat: string;
+  /** ICD.X code. */
+  icd: string;
+  diagnosa: string;
+  /** "DRUG (qty) , DRUG (qty)". */
+  resep: string;
+  /** Keluhan Utama of the visit's examination. */
+  keluhan: string;
+  cabang: string;
+}
+
+export interface ReportDiagnosaQuery {
+  from: string;
+  to: string;
+  page: number;
+  size: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+  cabang?: string;
+  nama?: string;
+  diagnosa?: string;
+  pelayanan?: number;
+}
+
+/** Report Klinik > Report ICD Dinkes: the cases of one ICD code and service, by age group and sex. */
+export interface ReportDinkes {
+  kode: string;
+  icd: string;
+  jenisRawat: string;
+  hari0_7: number;
+  hari8_28: number;
+  bulan1_11: number;
+  tahun1_4: number;
+  tahun5_9: number;
+  tahun10_14: number;
+  tahun15_19: number;
+  tahun20_44: number;
+  tahun45_59: number;
+  /** Over 59 years. */
+  tahun60: number;
+  laki: number;
+  perempuan: number;
+  total: number;
+}
+
+export interface ReportDinkesQuery {
+  from: string;
+  to: string;
+  cabang: string;
+  page: number;
+  size: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+}
+
+/** Transaksi Klinik > Penerimaan Barang: one goods receipt (trxfaktur). */
+export interface PenerimaanBarang {
+  /** No. */
+  id: number;
+  /** No GR (trxfaktur.no_fak). */
+  noGr: string;
+  /** Tgl Trans: the entry date. */
+  tglTrans: string | null;
+  /** Tgl GR: the receipt date. */
+  tglGr: string | null;
+  /** Empty when the receipt has no supplier. */
+  supplier: string;
+  total: number;
+  cabang: string;
+}
+
+export interface PenerimaanBarangQuery {
+  from: string;
+  to: string;
+  page: number;
+  size: number;
+  q?: string;
+  sort?: string;
+  dir?: string;
+  cabang?: string;
+  noGr?: string;
+  /** refsupplier id; 0 = no supplier. */
+  supplier?: number;
+}
+
+export interface PenerimaanBarangOptions {
+  suppliers: { id: number; name: string }[];
+  branches: { kode: string; nama: string }[];
+  today: string;
+}
+
+/** A row of the receipt form's "Data Distributor" lookup. */
+export interface PenerimaanDistributor {
+  id: number;
+  nama: string;
+  alamat: string;
+}
+
+/** A row of the receipt form's "Data Obat" lookup: a drug stocked at the branch. */
+export interface PenerimaanObat {
+  id: number;
+  nama: string;
+  jenis: string;
+  /** The selling unit (the unit of the stock). */
+  satuan: string;
+  /** The branch's buying price (trxstock.hbeli). */
+  harga: number;
+  stok: number;
+}
+
+export interface PenerimaanSaveInput {
+  cabang: string;
+  idDistributor: number;
+  noGr: string;
+  tglGr: string;
+  obat: { idObat: number; noBatch: string; byk: number; tglExp: string; disc: number }[];
+}
+
+/** A saved goods receipt for the read-only View page. */
+export interface PenerimaanDetail {
+  id: number;
+  noGr: string;
+  /** "YYYY-MM-DD HH:MM:SS". */
+  tglTrans: string | null;
+  tglGr: string | null;
+  cabang: string;
+  idDistributor: number | null;
+  distributor: string;
+  supplier: string;
+  createUser: string;
+  total: number;
+  obat: { idObat: number; nama: string; jenis: string; satuan: string; harga: number; noBatch: string; byk: number; tglExp: string | null; disc: number }[];
+}
+
+export interface PenerimaanSaveResult {
+  /** No Trans. */
+  id: number;
+  total: number;
+  noClose: number | null;
+}
+
 /** Fields of the patient "Pencarian" panel in the registration form. */
 export type PasienSearchField = "norm" | "nama" | "umur" | "alamat" | "jamkes";
 
@@ -632,6 +1423,7 @@ export const api = {
     request<TokenResponse>("/api/auth/login", { method: "POST", body: { email, password } }),
   refresh: (token: string) => request<TokenResponse>("/api/auth/refresh", { method: "POST", token }),
   me: (token: string) => request<MeResponse>("/api/me", { token }),
+  myBranches: (token: string) => request<{ branches: MyBranch[] }>("/api/me/branches", { token }),
   /** Menus the caller's role can open, and the role's name. */
   menus: (token: string) => request<{ menus: MenuItem[]; role: string | null }>("/api/menus", { token }),
 
@@ -765,8 +1557,140 @@ export const api = {
     return request<{ rows: Pengobatan[]; total: number; unfilteredTotal: number }>(`/api/pengobatan?${qs}`, { token });
   },
   pengobatanOptions: (token: string) => request<PengobatanOptions>("/api/pengobatan/options", { token }),
+  // Report Klinik > Raw Data Pengobatan: the same list with patient columns, guarded by the report menu.
+  rawDataPengobatan: (token: string, params: PengobatanQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: Pengobatan[]; total: number; unfilteredTotal: number }>(`/api/report-klinik/raw-data-pengobatan?${qs}`, { token });
+  },
+  rawDataPengobatanOptions: (token: string) => request<PengobatanOptions>("/api/report-klinik/raw-data-pengobatan/options", { token }),
+  penjualanObat: (token: string, params: PenjualanObatQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: PenjualanObat[]; total: number; unfilteredTotal: number }>(`/api/report-klinik/penjualan-obat?${qs}`, { token });
+  },
+  penjualanObatOptions: (token: string) => request<PenjualanObatOptions>("/api/report-klinik/penjualan-obat/options", { token }),
+  penjualanTindakan: (token: string, params: PenjualanTindakanQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: PenjualanTindakan[]; total: number; unfilteredTotal: number }>(`/api/report-klinik/penjualan-tindakan?${qs}`, { token });
+  },
+  penjualanPenunjang: (token: string, params: PenjualanPenunjangQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: PenjualanPenunjang[]; total: number; unfilteredTotal: number }>(`/api/report-klinik/penjualan-penunjang?${qs}`, { token });
+  },
+  /** Same shape as Penjualan Obat's options: jenis (here refjenispanjang), branches, today. */
+  penjualanPenunjangOptions: (token: string) => request<PenjualanObatOptions>("/api/report-klinik/penjualan-penunjang/options", { token }),
+  penjualanOTC: (token: string, params: PenjualanOTCQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: PenjualanOTC[]; total: number; unfilteredTotal: number }>(`/api/report-klinik/penjualan-otc?${qs}`, { token });
+  },
+  penjualanOTCOptions: (token: string) => request<PenjualanOTCOptions>("/api/report-klinik/penjualan-otc/options", { token }),
+  /** Penjualan Softdrink: Penjualan OTC for the drugs of type SOFT DRINK. */
+  penjualanSoftdrink: (token: string, params: PenjualanOTCQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: PenjualanOTC[]; total: number; unfilteredTotal: number }>(`/api/report-klinik/penjualan-softdrink?${qs}`, { token });
+  },
+  penjualanSoftdrinkOptions: (token: string) => request<PenjualanOTCOptions>("/api/report-klinik/penjualan-softdrink/options", { token }),
+  pasienBaru: (token: string, params: PasienBaruQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: PasienBaru[]; total: number; unfilteredTotal: number }>(`/api/report-klinik/pasien-baru?${qs}`, { token });
+  },
+  pasienBaruOptions: (token: string) => request<PasienBaruOptions>("/api/report-klinik/pasien-baru/options", { token }),
+  rekapAsuransi: (token: string, params: RekapAsuransiQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: RekapAsuransi[]; total: number; unfilteredTotal: number }>(`/api/report-klinik/rekap-asuransi?${qs}`, { token });
+  },
+  rekapAsuransiOptions: (token: string) => request<RekapAsuransiOptions>("/api/report-klinik/rekap-asuransi/options", { token }),
+  transaksiHarian: (token: string, params: TransaksiHarianQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: TransaksiHarian[]; total: number; unfilteredTotal: number }>(`/api/report-klinik/transaksi-harian?${qs}`, { token });
+  },
+  transaksiHarianOptions: (token: string) => request<TransaksiHarianOptions>("/api/report-klinik/transaksi-harian/options", { token }),
+  allStok: (token: string, params: AllStokQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: AllStok[]; total: number; unfilteredTotal: number }>(`/api/report-klinik/all-stok?${qs}`, { token });
+  },
+  allStokOptions: (token: string) => request<AllStokOptions>("/api/report-klinik/all-stok/options", { token }),
+  rujukan: (token: string, params: RujukanQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: Rujukan[]; total: number; unfilteredTotal: number }>(`/api/report-klinik/rujukan?${qs}`, { token });
+  },
+  rujukanOptions: (token: string) =>
+    request<{ branches: { kode: string; nama: string }[]; today: string }>("/api/report-klinik/rujukan/options", { token }),
+  reportPendaftaran: (token: string, params: ReportPendaftaranQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: ReportPendaftaran[]; total: number; unfilteredTotal: number }>(`/api/report-klinik/pendaftaran?${qs}`, { token });
+  },
+  reportPendaftaranOptions: (token: string) => request<ReportPendaftaranOptions>("/api/report-klinik/pendaftaran/options", { token }),
+  reportPendapatan: (token: string, params: { cabang: string; from: string; to: string; pelayanan?: number; dokter?: number }) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<ReportPendapatan>(`/api/report-klinik/pendapatan?${qs}`, { token });
+  },
+  reportPendapatanOptions: (token: string) => request<ReportPendapatanOptions>("/api/report-klinik/pendapatan/options", { token }),
+  reportPendapatanDokter: (token: string, cabang: string) =>
+    request<{ rows: { id: number; name: string }[] }>(`/api/report-klinik/pendapatan/dokter?cabang=${encodeURIComponent(cabang)}`, { token }),
+  reportDiagnosa: (token: string, params: ReportDiagnosaQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: ReportDiagnosa[]; total: number; unfilteredTotal: number }>(`/api/report-klinik/diagnosa?${qs}`, { token });
+  },
+  /** Same shape as Report Pendapatan's options: services, branches, today. */
+  reportDiagnosaOptions: (token: string) => request<ReportPendapatanOptions>("/api/report-klinik/diagnosa/options", { token }),
+  reportDinkes: (token: string, params: ReportDinkesQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: ReportDinkes[]; total: number; unfilteredTotal: number }>(`/api/report-klinik/icd-dinkes?${qs}`, { token });
+  },
+  reportDinkesOptions: (token: string) =>
+    request<{ branches: { kode: string; nama: string }[]; today: string }>("/api/report-klinik/icd-dinkes/options", { token }),
+  penerimaanBarang: (token: string, params: PenerimaanBarangQuery) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: PenerimaanBarang[]; total: number; unfilteredTotal: number }>(`/api/penerimaan-barang?${qs}`, { token });
+  },
+  penerimaanBarangOptions: (token: string) => request<PenerimaanBarangOptions>("/api/penerimaan-barang/options", { token }),
+  penerimaanDistributor: (token: string) => request<{ rows: PenerimaanDistributor[] }>("/api/penerimaan-barang/distributor", { token }),
+  penerimaanObat: (token: string, cabang: string) =>
+    request<{ rows: PenerimaanObat[] }>(`/api/penerimaan-barang/obat?cabang=${encodeURIComponent(cabang)}`, { token }),
+  penerimaanDetail: (token: string, id: number) => request<PenerimaanDetail>(`/api/penerimaan-barang/detail/${id}`, { token }),
+  savePenerimaan: (token: string, input: PenerimaanSaveInput) =>
+    request<PenerimaanSaveResult>("/api/penerimaan-barang", { method: "POST", body: input, token }),
+  penjualanTindakanOptions: (token: string) =>
+    request<{ branches: { kode: string; nama: string }[]; today: string }>("/api/report-klinik/penjualan-tindakan/options", { token }),
   pengobatanDokter: (token: string, cabang: string) =>
     request<{ rows: PengobatanDokter[] }>(`/api/pengobatan/dokter?cabang=${encodeURIComponent(cabang)}`, { token }),
+  pengobatanTindakan: (token: string, cabang: string, dokter: number) =>
+    request<{ rows: PengobatanTindakan[] }>(`/api/pengobatan/tindakan?cabang=${encodeURIComponent(cabang)}&dokter=${dokter}`, { token }),
+  pengobatanPenunjang: (token: string, cabang: string) =>
+    request<{ rows: PengobatanPenunjang[] }>(`/api/pengobatan/penunjang?cabang=${encodeURIComponent(cabang)}`, { token }),
+  pengobatanIcd: (token: string, params: { q?: string; page: number; size: number; sort?: string; dir?: string }) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ rows: PengobatanIcd[]; total: number; unfilteredTotal: number }>(`/api/pengobatan/icd?${qs}`, { token });
+  },
+  getPemeriksaan: (token: string, idKun: number) =>
+    request<{ pemeriksaan: PemeriksaanRecord | null }>(`/api/pengobatan/pemeriksaan/${idKun}`, { token }),
+  savePemeriksaan: (token: string, idKun: number, input: PemeriksaanInput) =>
+    request<{ pemeriksaan: PemeriksaanRecord | null }>(`/api/pengobatan/pemeriksaan/${idKun}`, { method: "PUT", body: input, token }),
+  savePengobatan: (token: string, input: PengobatanSaveInput) =>
+    request<PengobatanSaveResult>("/api/pengobatan", { method: "POST", body: input, token }),
+  kuitansi: (token: string, id: number) => request<Kuitansi>(`/api/pengobatan/kuitansi/${id}`, { token }),
+  cetakKuitansi: (token: string, id: number) => request<Kuitansi>(`/api/pengobatan/kuitansi/${id}/cetak`, { method: "POST", token }),
+  nota: (token: string, id: number) => request<Nota>(`/api/pengobatan/nota/${id}`, { token }),
+  pengobatanDetail: (token: string, id: number) => request<PengobatanDetail>(`/api/pengobatan/detail/${id}`, { token }),
+  cancelPengobatan: (token: string, id: number, alasan: string) =>
+    request<PengobatanDetail>(`/api/pengobatan/detail/${id}/cancel`, { method: "POST", body: { alasan }, token }),
   pengobatanObat: (token: string, cabang: string) =>
     request<{ rows: PengobatanObat[] }>(`/api/pengobatan/obat?cabang=${encodeURIComponent(cabang)}`, { token }),
   pengobatanPendaftaran: (token: string, params: PengobatanPendaftaranQuery) => {

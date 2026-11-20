@@ -14,6 +14,7 @@ import (
 
 	"github.com/example/be_jwt_golang/backend/internal/auth"
 	"github.com/example/be_jwt_golang/backend/internal/branch"
+	"github.com/example/be_jwt_golang/backend/internal/branchauth"
 	"github.com/example/be_jwt_golang/backend/internal/config"
 	"github.com/example/be_jwt_golang/backend/internal/db"
 	"github.com/example/be_jwt_golang/backend/internal/distributor"
@@ -26,10 +27,12 @@ import (
 	"github.com/example/be_jwt_golang/backend/internal/orglokasi"
 	"github.com/example/be_jwt_golang/backend/internal/pasien"
 	"github.com/example/be_jwt_golang/backend/internal/pendaftaran"
+	"github.com/example/be_jwt_golang/backend/internal/penerimaan"
 	"github.com/example/be_jwt_golang/backend/internal/pengobatan"
 	"github.com/example/be_jwt_golang/backend/internal/penunjang"
 	"github.com/example/be_jwt_golang/backend/internal/perujukotc"
 	"github.com/example/be_jwt_golang/backend/internal/principal"
+	"github.com/example/be_jwt_golang/backend/internal/reportklinik"
 	"github.com/example/be_jwt_golang/backend/internal/role"
 	"github.com/example/be_jwt_golang/backend/internal/tindakan"
 	"github.com/example/be_jwt_golang/backend/internal/user"
@@ -71,6 +74,9 @@ func main() {
 	menuHandler.Routes(mux, tokens.Middleware)
 	role.NewHandler(role.NewPostgresRepository(pool), menuRepo).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
 	branch.NewHandler(branch.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	mux.Handle("GET /api/me/branches", tokens.Middleware(branchauth.MineHandler(func(ctx context.Context, userID string) ([]branchauth.Branch, error) {
+		return branchauth.ForUser(ctx, pool, userID)
+	})))
 	obat.NewHandler(obat.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
 	tindakan.NewHandler(tindakan.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
 	penunjang.NewHandler(penunjang.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
@@ -84,6 +90,8 @@ func main() {
 	pendaftaran.NewHandler(pendaftaran.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
 	orglokasi.NewHandler(orglokasi.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
 	pengobatan.NewHandler(pengobatan.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	reportklinik.NewHandler(reportklinik.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
+	penerimaan.NewHandler(penerimaan.NewPostgresRepository(pool)).Routes(mux, tokens.Middleware, menuHandler.RequireMenu)
 	if cfg.SwaggerEnabled {
 		docs.Register(mux)
 		log.Printf("swagger UI enabled at /swagger/")
